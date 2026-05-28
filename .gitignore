@@ -1,0 +1,52 @@
+# API Keys and Secrets
+.env
+.env.local
+.env.*.local
+config/.env
+
+# Logs
+*.log
+logs/
+*.swp
+*.swo
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+*.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Temp files
+*.tmp
+*~
+.tmp/
+
+# Test results
+.pytest_cache/
+coverage/
+.coverage
+
+# Node (if frontend added later)
+node_modules/
+npm-debug.log
+
+# Fail2ban backups
+*.bak
+*.backup

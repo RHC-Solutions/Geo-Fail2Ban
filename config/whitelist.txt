@@ -1,0 +1,12 @@
+# Geo-Fail2Ban Firewall Whitelist
+# Add trusted IPs for SSH and DNS access (one per line)
+# 
+# Example:
+# 203.0.113.10
+# 203.0.113.20
+# 203.0.113.30
+# 203.0.113.31
+#
+# To apply: sudo bash scripts/setup-firewall.sh
+
+# Add your IPs below:
