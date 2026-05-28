@@ -1,0 +1,29 @@
+# Fail2ban main configuration with Telegram alerts
+# Local configuration file
+
+[DEFAULT]
+# Default ban time (24 hours)
+bantime = 86400
+
+# Finding time (1 hour)
+findtime = 3600
+
+# Max retry attempts before ban
+maxretry = 5
+
+# Default action
+action = %(action_)s
+         telegram
+
+banaction = iptables-multiport
+
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 5
+findtime = 3600
+bantime = 86400
+action = %(action_)s
+         telegram
