@@ -107,10 +107,17 @@ is what the scripts read at runtime. Edit that file to change settings later.
 
 ### Firewall Whitelist - `config/whitelist.txt`
 
-Restrict SSH & DNS to specific IPs:
+Restrict SSH & DNS to specific IPs. First create your whitelist from the
+template (the real `whitelist.txt` is git-ignored, so your IPs stay private):
 
 ```bash
-# Add one IP per line
+cp config/whitelist.txt.example config/whitelist.txt
+nano config/whitelist.txt
+```
+
+Add one IP per line (the values below are documentation placeholders — replace them):
+
+```bash
 203.0.113.10
 203.0.113.20
 203.0.113.30
@@ -208,9 +215,10 @@ Geo-Fail2Ban/
 ├── LICENSE                   # MIT License
 ├── install.sh                # Automated installer (--skip-geo to skip geoblock)
 ├── config/
-│   ├── .env                  # API credentials (EDIT THIS!)
+│   ├── .env                  # API credentials (EDIT THIS! - git-ignored)
 │   ├── .env.example          # Template
-│   └── whitelist.txt         # IP whitelist for SSH/DNS
+│   ├── whitelist.txt.example # IP whitelist template (tracked)
+│   └── whitelist.txt         # Your real trusted IPs (git-ignored)
 ├── fail2ban/                 # Mirrors /etc/fail2ban/
 │   ├── jail.local            # sshd jail (24h bans + telegram action)
 │   ├── jail.d/abuseipdb.conf # Permanent jail (bantime = -1)

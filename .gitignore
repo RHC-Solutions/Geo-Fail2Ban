@@ -4,6 +4,10 @@
 .env.*.local
 config/.env
 
+# Firewall whitelist — contains your REAL trusted IPs; never commit it.
+# Use config/whitelist.txt.example as the tracked template.
+config/whitelist.txt
+
 # Logs
 *.log
 logs/
