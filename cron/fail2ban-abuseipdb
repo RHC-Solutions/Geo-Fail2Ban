@@ -1,6 +1,6 @@
 # Refresh AbuseIPDB blacklist daily (free API allows only 5 blacklist requests/day)
 # Add-only ipset: IPs are blocked permanently.
-10 5 * * * root /opt/fail2ban-scripts/abuseipdb_blocker.py >> /var/log/fail2ban-abuseipdb.log 2>&1
+10 5 * * * root /opt/geo-fail2ban/abuseipdb_blocker.py >> /var/log/fail2ban-abuseipdb.log 2>&1
 
 # Update GeoIP database weekly (if available)
 0 2 * * 0 root python3 -m geoip2.scripts.update_geoip2 >> /var/log/fail2ban-geoip.log 2>&1

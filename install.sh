@@ -13,6 +13,10 @@ cd "$(dirname "$0")"
 SKIP_GEO=0
 [ "${1:-}" = "--skip-geo" ] && SKIP_GEO=1
 
+# Where all program files are installed. Override with: INSTALL_DIR=/path sudo -E bash install.sh
+INSTALL_DIR="${INSTALL_DIR:-/opt/geo-fail2ban}"
+LEGACY_DIR="/opt/fail2ban-scripts"   # previous default; cleaned up on upgrade
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -37,6 +41,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 print_header "Geo-Fail2Ban Installation"
+print_info "Install directory: $INSTALL_DIR"
 
 # Step 1: Configuration file (do this FIRST - everything depends on it)
 if [ ! -f /etc/geo-fail2ban.conf ]; then
@@ -63,6 +68,19 @@ if grep -q 'YOUR_BOT_TOKEN_HERE' /etc/geo-fail2ban.conf; then
     exit 1
 fi
 
+# Pre-flight: if a previous version is installed, uninstall it first.
+# --keep-config preserves /etc/geo-fail2ban.conf (your credentials) so the
+# fresh install reuses them. Done AFTER config validation above so we never
+# tear down a working install only to bail out on a missing/placeholder config.
+if [ -d "$INSTALL_DIR" ] || [ -d "$LEGACY_DIR" ] \
+   || [ -f /etc/systemd/system/ipset-abuseipdb.service ] \
+   || [ -f /etc/fail2ban/jail.d/abuseipdb.conf ] \
+   || [ -f /etc/cron.d/fail2ban-abuseipdb ]; then
+    print_info "Previous installation detected - uninstalling it first..."
+    INSTALL_DIR="$INSTALL_DIR" bash scripts/uninstall.sh --yes --keep-config
+    print_success "Previous version removed (kept /etc/geo-fail2ban.conf)"
+fi
+
 # Step 2: Install dependencies
 print_info "Installing dependencies..."
 apt-get update > /dev/null 2>&1
@@ -72,11 +90,11 @@ python3 -c 'import requests' 2>/dev/null || pip3 install requests --break-system
 print_success "Dependencies installed"
 
 # Step 3: Scripts
-print_info "Installing scripts..."
-mkdir -p /opt/fail2ban-scripts
-cp scripts/telegram_alert.py scripts/abuseipdb_blocker.py /opt/fail2ban-scripts/
-chmod +x /opt/fail2ban-scripts/*.py
-print_success "Scripts installed to /opt/fail2ban-scripts"
+print_info "Installing scripts to $INSTALL_DIR ..."
+mkdir -p "$INSTALL_DIR"
+cp scripts/telegram_alert.py scripts/abuseipdb_blocker.py "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR"/*.py
+print_success "Scripts installed to $INSTALL_DIR"
 
 # Step 4: Fail2ban configuration
 print_info "Installing fail2ban configuration..."
@@ -85,6 +103,7 @@ cp fail2ban/jail.local /etc/fail2ban/jail.local
 cp fail2ban/jail.d/abuseipdb.conf /etc/fail2ban/jail.d/abuseipdb.conf
 cp fail2ban/filter.d/abuseipdb.conf /etc/fail2ban/filter.d/abuseipdb.conf
 cp fail2ban/action.d/telegram.conf /etc/fail2ban/action.d/telegram.conf
+sed -i "s#/opt/geo-fail2ban#$INSTALL_DIR#g" /etc/fail2ban/action.d/telegram.conf
 touch /var/log/abuseipdb.log
 print_success "Fail2ban jails installed (sshd 24h + abuseipdb permanent)"
 
@@ -99,13 +118,14 @@ print_success "AbuseIPDB blacklist ipset + DROP rule active"
 # Step 6: Geoblock (optional)
 if [ "$SKIP_GEO" -eq 0 ]; then
     print_info "Setting up country geoblock..."
-    mkdir -p /etc/ipset-geo/bin
-    cp ipset-geo/update.sh /etc/ipset-geo/bin/update.sh
-    chmod +x /etc/ipset-geo/bin/update.sh
+    mkdir -p "$INSTALL_DIR/ipset-geo"
+    cp ipset-geo/update.sh "$INSTALL_DIR/ipset-geo/update.sh"
+    chmod +x "$INSTALL_DIR/ipset-geo/update.sh"
     cp systemd/ipset-geo.service /etc/systemd/system/
     cp cron/ipset-geo /etc/cron.d/ipset-geo
+    sed -i "s#/opt/geo-fail2ban#$INSTALL_DIR#g" /etc/cron.d/ipset-geo
     print_info "Downloading country zone files (this can take a minute)..."
-    /etc/ipset-geo/bin/update.sh || print_error "geoblock refresh failed (will retry via weekly cron)"
+    "$INSTALL_DIR/ipset-geo/update.sh" || print_error "geoblock refresh failed (will retry via weekly cron)"
     iptables -C INPUT -m set --match-set geoblock src -j DROP 2>/dev/null \
         || iptables -I INPUT 1 -m set --match-set geoblock src -j DROP
     print_success "Geoblock active (countries from GEOBLOCK_COUNTRIES in /etc/geo-fail2ban.conf)"
@@ -119,12 +139,13 @@ systemctl daemon-reload
 systemctl enable ipset-abuseipdb.service > /dev/null 2>&1
 [ "$SKIP_GEO" -eq 0 ] && systemctl enable ipset-geo.service > /dev/null 2>&1
 cp cron/fail2ban-abuseipdb /etc/cron.d/fail2ban-abuseipdb
+sed -i "s#/opt/geo-fail2ban#$INSTALL_DIR#g" /etc/cron.d/fail2ban-abuseipdb
 chmod 644 /etc/cron.d/*
 print_success "Boot restore services enabled, daily blacklist cron installed"
 
 # Step 8: First blacklist fetch (best effort - free API allows 5/day)
 print_info "Fetching AbuseIPDB blacklist (may hit daily rate limit)..."
-/opt/fail2ban-scripts/abuseipdb_blocker.py 2>&1 | tail -2 || true
+"$INSTALL_DIR/abuseipdb_blocker.py" 2>&1 | tail -2 || true
 ipset save abuseipdb-blacklist > /etc/ipset-abuseipdb.conf
 
 # Step 9: Restart fail2ban
