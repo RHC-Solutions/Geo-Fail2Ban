@@ -49,6 +49,13 @@ sudo bash install.sh
 
 **That's it! You're protected.** 🛡️
 
+> **Install location:** everything is installed under `/opt/geo-fail2ban` by default.
+> Install elsewhere with `INSTALL_DIR=/srv/geo-fail2ban sudo -E bash install.sh`.
+>
+> **Upgrading / reinstalling:** `install.sh` auto-detects a previous version and
+> uninstalls it first (keeping your `/etc/geo-fail2ban.conf` credentials), so
+> re-running it always yields a clean install.
+
 ---
 
 ## 🔑 Required API Keys
@@ -265,9 +272,9 @@ sudo apt-get install -y fail2ban python3-pip curl
 pip3 install requests
 
 # 3. Copy files
-sudo mkdir -p /opt/fail2ban-scripts
-sudo cp scripts/* /opt/fail2ban-scripts/
-sudo chmod +x /opt/fail2ban-scripts/*.py
+sudo mkdir -p /opt/geo-fail2ban
+sudo cp scripts/* /opt/geo-fail2ban/
+sudo chmod +x /opt/geo-fail2ban/*.py
 
 # 4. Copy configurations
 sudo cp config/jail.local /etc/fail2ban/jail.local
@@ -429,7 +436,7 @@ sudo nano /etc/fail2ban/jail.local
 
 ### Edit Alert Script
 ```bash
-sudo nano /opt/fail2ban-scripts/telegram_alert.py
+sudo nano /opt/geo-fail2ban/telegram_alert.py
 ```
 
 ### Edit Cron Jobs
@@ -470,7 +477,7 @@ sudo systemctl stop fail2ban
 # Remove files
 sudo rm /etc/fail2ban/jail.local
 sudo rm /etc/fail2ban/action.d/telegram.conf
-sudo rm -rf /opt/fail2ban-scripts
+sudo rm -rf /opt/geo-fail2ban
 sudo rm /etc/cron.d/fail2ban-abuseipdb
 
 # Restart

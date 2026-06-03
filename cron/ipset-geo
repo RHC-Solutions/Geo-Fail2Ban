@@ -1,2 +1,2 @@
 # Refresh geoblock ipset weekly (Sun 04:17 UTC)
-17 4 * * 0 root /etc/ipset-geo/bin/update.sh >> /var/log/ipset-geo.log 2>&1
+17 4 * * 0 root /opt/geo-fail2ban/ipset-geo/update.sh >> /var/log/ipset-geo.log 2>&1

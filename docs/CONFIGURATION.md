@@ -167,10 +167,10 @@ action = telegram[name=%(jail)s]
 actionname = Telegram Alert
 
 # Command when IP is banned
-actionban = /opt/fail2ban-scripts/telegram_alert.py <ip> <name> ban
+actionban = /opt/geo-fail2ban/telegram_alert.py <ip> <name> ban
 
 # Command when IP is unbanned
-actionunban = /opt/fail2ban-scripts/telegram_alert.py <ip> <name> unban
+actionunban = /opt/geo-fail2ban/telegram_alert.py <ip> <name> unban
 
 # Default values
 default_user_agent = Fail2Ban
