@@ -48,7 +48,10 @@ print_success "Service stopped"
 
 print_warning "Removing configuration files..."
 rm -f /etc/fail2ban/jail.local
+rm -f /etc/fail2ban/jail.d/abuseipdb.conf
+rm -f /etc/fail2ban/filter.d/abuseipdb.conf
 rm -f /etc/fail2ban/action.d/telegram.conf
+rm -f /etc/geo-fail2ban.conf
 print_success "Configuration files removed"
 
 print_warning "Removing scripts..."
@@ -57,7 +60,20 @@ print_success "Scripts removed"
 
 print_warning "Removing cron jobs..."
 rm -f /etc/cron.d/fail2ban-abuseipdb
+rm -f /etc/cron.d/ipset-geo
 print_success "Cron jobs removed"
+
+print_warning "Removing ipsets, firewall rules and persistence units..."
+systemctl disable --now ipset-abuseipdb.service ipset-geo.service 2>/dev/null || true
+rm -f /etc/systemd/system/ipset-abuseipdb.service /etc/systemd/system/ipset-geo.service
+systemctl daemon-reload
+iptables -D INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null || true
+iptables -D INPUT -m set --match-set geoblock src -j DROP 2>/dev/null || true
+ipset destroy abuseipdb-blacklist 2>/dev/null || true
+ipset destroy geoblock 2>/dev/null || true
+rm -f /etc/ipset-abuseipdb.conf
+rm -rf /etc/ipset-geo
+print_success "Ipsets and firewall rules removed"
 
 print_warning "Restarting Fail2Ban..."
 systemctl restart fail2ban

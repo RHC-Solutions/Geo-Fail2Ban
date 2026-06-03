@@ -10,12 +10,15 @@
 
 ## ✨ Features
 
-- 🚫 **Real-time SSH Intrusion Detection** - 5 failed attempts = automatic ban
-- 📱 **Telegram Alerts** - Get notified instantly when attacks occur
+- 🚫 **Real-time SSH Intrusion Detection** - 5 failed attempts = automatic 24h ban
+- ⛔ **Permanent Ban Escalation** - banned IPs with AbuseIPDB score ≥ 75% are banned FOREVER (`bantime = -1`)
+- 📱 **Telegram Alerts** - explicit `BANNED` / `UNBANNED` headers, with permanent-ban status on every unban
 - 🌍 **GeoIP Location Data** - See country, city, timezone, ISP of attacking IP
 - 🔴 **AbuseIPDB Integration** - Check IP reputation scores (0-100%)
 - 🤖 **Automatic IP Reporting** - Contribute to community threat database
-- 📊 **Hourly Threat Import** - Automatically block known-bad IPs from AbuseIPDB
+- 📊 **Daily Blacklist Import** - AbuseIPDB blacklist into an add-only ipset (~10,000 IPs, never expires)
+- 🗺️ **Country Geoblock** - optional ipset blocking whole countries (ipdeny.com zones, weekly refresh)
+- 🔁 **Reboot-safe** - systemd units restore all ipsets and firewall rules at boot
 - 🔐 **Firewall Whitelisting** - Restrict SSH/DNS to specific IPs only
 - 📝 **Complete Audit Trail** - All events logged with threat intelligence
 
@@ -36,14 +39,12 @@
 git clone https://github.com/RHC-Solutions/Geo-Fail2Ban.git
 cd Geo-Fail2Ban
 
-# 2. Run installation script
+# 2. Configure your API credentials
+cp config/.env.example config/.env
+nano config/.env
+
+# 3. Run installation script (use --skip-geo to skip country blocking)
 sudo bash install.sh
-
-# 3. Configure your API credentials
-sudo nano config/.env
-
-# 4. Restart fail2ban
-sudo systemctl restart fail2ban
 ```
 
 **That's it! You're protected.** 🛡️
@@ -92,13 +93,17 @@ IPINFO_API_TOKEN="your_ipinfo_token"
 # IP Reputation (AbuseIPDB)
 ABUSEIPDB_API_KEY="your_abuseipdb_key"
 
-# Server Settings
-SERVER_NAME="your-server-name"
-BAN_TIME=86400          # 24 hours in seconds
-MAX_RETRIES=5           # Attempts before ban
-FIND_TIME=3600          # Detection window (1 hour)
-ABUSE_THRESHOLD=75      # Min score to auto-block (0-100%)
+# AbuseIPDB settings
+ABUSE_THRESHOLD=75           # Min score for PERMANENT ban (0-100%)
+REPORT_CATEGORIES="18,22,23" # Categories reported back to AbuseIPDB
+BLACKLIST_LIMIT=10000        # Max IPs per daily blacklist import
+
+# Geoblock (ipdeny.com country codes; empty = block none)
+GEOBLOCK_COUNTRIES="cn in vn pk bd ru"
 ```
+
+The installer copies this file to `/etc/geo-fail2ban.conf` (chmod 600) — that
+is what the scripts read at runtime. Edit that file to change settings later.
 
 ### Firewall Whitelist - `config/whitelist.txt`
 
@@ -124,12 +129,13 @@ sudo bash scripts/setup-firewall.sh
 When an attack is detected:
 
 ```
-🚫 Fail2Ban Alert
+🚫 Fail2Ban Alert — BANNED
 Server: dns02.example.com
 Jail: sshd
 Host: 165.154.182.85
 Attempts: 5 (Failed login attempts detected)
-Action: Banned
+Action: 🚫 Banned (temporary, expires per jail bantime)
+⛔ Escalated to PERMANENT ban (AbuseIPDB score ≥ 75%)
 Time: 2026-05-28 23:45:12
 
 🌍 GeoIP Information
@@ -149,6 +155,18 @@ Distinct Users Reporting: 57
 Last Reported: 2026-05-28T22:04:09+00:00
 ```
 
+When a temporary ban expires, the unban alert tells you whether the IP is
+still blocked:
+
+```
+✅ Fail2Ban Alert — UNBANNED
+Server: dns02.example.com
+Jail: sshd
+Host: 165.154.182.85
+Action: ✅ Unbanned (temporary ban expired)
+⛔ Still PERMANENTLY blocked via AbuseIPDB blacklist
+```
+
 ---
 
 ## 📊 How It Works
@@ -158,21 +176,26 @@ SSH Attack
     ↓
 5+ Failed Attempts (within 1 hour)
     ↓
-IP Banned by UFW/iptables
-    ↓
-Telegram Alert Triggered
+IP Banned by iptables for 24h (sshd jail)
     ↓
 GeoIP Data Fetched (ipinfo.io)
     ↓
 Reputation Data Fetched (AbuseIPDB)
     ↓
+Score ≥ 75%? → written to /var/log/abuseipdb.log
+    ↓             ↓
+    ↓         'abuseipdb' jail bans it PERMANENTLY (bantime = -1)
+    ↓
 Alert Sent to Telegram with Full Intel
     ↓
 IP Reported to AbuseIPDB (community database)
-    ↓
-Every Hour: Import high-abuse IPs from AbuseIPDB
-    ↓
-Preemptive Blocking (Attempts: 0)
+
+In parallel:
+  • Daily: AbuseIPDB blacklist (score ≥ 75) imported into the add-only
+    'abuseipdb-blacklist' ipset → dropped at the top of INPUT, forever.
+    (The free API allows only 5 blacklist downloads/day — do NOT run hourly.)
+  • Weekly: country zone files refresh the 'geoblock' ipset (optional).
+  • On boot: systemd units restore both ipsets and their DROP rules.
 ```
 
 ---
@@ -183,17 +206,29 @@ Preemptive Blocking (Attempts: 0)
 Geo-Fail2Ban/
 ├── README.md                 # This file
 ├── LICENSE                   # MIT License
-├── install.sh                # Automated installer
+├── install.sh                # Automated installer (--skip-geo to skip geoblock)
 ├── config/
 │   ├── .env                  # API credentials (EDIT THIS!)
 │   ├── .env.example          # Template
-│   ├── whitelist.txt         # IP whitelist for SSH/DNS
-│   └── jail.local            # Fail2ban configuration
+│   └── whitelist.txt         # IP whitelist for SSH/DNS
+├── fail2ban/                 # Mirrors /etc/fail2ban/
+│   ├── jail.local            # sshd jail (24h bans + telegram action)
+│   ├── jail.d/abuseipdb.conf # Permanent jail (bantime = -1)
+│   ├── filter.d/abuseipdb.conf
+│   └── action.d/telegram.conf
 ├── scripts/
-│   ├── telegram_alert.py     # Alert script (260 lines)
-│   ├── abuseipdb_blocker.py  # Hourly IP import (91 lines)
+│   ├── telegram_alert.py     # Alerts + permanent-ban escalation
+│   ├── abuseipdb_blocker.py  # Daily blacklist -> add-only ipset
 │   ├── setup-firewall.sh     # UFW firewall setup
 │   └── uninstall.sh          # Removal script
+├── ipset-geo/
+│   └── update.sh             # Weekly country-zone refresh (geoblock ipset)
+├── systemd/
+│   ├── ipset-abuseipdb.service  # Restore blacklist ipset + rule at boot
+│   └── ipset-geo.service        # Restore geoblock ipset + rule at boot
+├── cron/
+│   ├── fail2ban-abuseipdb    # Daily blacklist import (API limit: 5/day)
+│   └── ipset-geo             # Weekly geoblock refresh
 ├── docs/
 │   ├── INSTALLATION.md       # Detailed setup guide
 │   ├── CONFIGURATION.md      # Configuration details
@@ -369,7 +404,7 @@ curl "https://ipinfo.io?token=YOUR_TOKEN"
 # Check API key
 curl -H "Key: YOUR_KEY" https://api.abuseipdb.com/api/v2/check?ipAddress=8.8.8.8
 
-# Check hourly cron logs
+# Check daily cron logs
 sudo grep abuseipdb /var/log/syslog
 ```
 

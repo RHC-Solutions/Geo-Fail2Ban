@@ -14,7 +14,7 @@ This guide walks you through setting up the required APIs for Geo-Fail2Ban.
    - Enter a username: `geo_fail2ban_bot` (or similar, must end with `_bot`)
 5. BotFather will provide your **Bot Token**
 
-Example token: `REDACTED-TELEGRAM-BOT-TOKEN`
+Example token: `123456789:AAExampleExampleExampleExampleXYZ`
 
 ### Step 2: Get Your Chat ID
 
@@ -29,7 +29,7 @@ Example token: `REDACTED-TELEGRAM-BOT-TOKEN`
 2. Send any message
 3. Use the URL from above to find the Chat ID (negative for groups)
 
-Example Chat ID: `REDACTED-TELEGRAM-CHAT-ID` (group) or `123456789` (direct)
+Example Chat ID: `-1001234567890` (group) or `123456789` (direct)
 
 ### Step 3: Update .env
 
@@ -64,7 +64,7 @@ curl -X POST https://api.telegram.org/bot{TOKEN}/sendMessage \
 2. Click your profile → Settings
 3. Under "Token" you'll see your **API Token** (32 characters)
 
-Example token: `REDACTED-IPINFO-TOKEN`
+Example token: `abc123def456`
 
 ### Step 3: Verify Rate Limits
 
@@ -116,7 +116,7 @@ Expected response:
 2. Click Account → API
 3. Copy your **API Key** (64 characters)
 
-Example key: `REDACTED-ABUSEIPDB-KEY`
+Example key: `0000000000000000000000000000000000000000000000000000000000000000000000000000aaaa`
 
 ### Step 3: Check Rate Limits
 
@@ -157,10 +157,10 @@ sudo nano config/.env
 Fill in all values:
 
 ```
-TELEGRAM_BOT_TOKEN="REDACTED-TELEGRAM-BOT-TOKEN"
-TELEGRAM_CHAT_ID="REDACTED-TELEGRAM-CHAT-ID"
-IPINFO_API_TOKEN="REDACTED-IPINFO-TOKEN"
-ABUSEIPDB_API_KEY="REDACTED-ABUSEIPDB-KEY"
+TELEGRAM_BOT_TOKEN="123456789:AAExampleExampleExampleExampleXYZ"
+TELEGRAM_CHAT_ID="-1001234567890"
+IPINFO_API_TOKEN="abc123def456"
+ABUSEIPDB_API_KEY="0000000000000000000000000000000000000000000000000000000000000000000000000000aaaa"
 SERVER_NAME="my-server"
 SERVER_LOCATION="Datacenter"
 BAN_TIME=86400

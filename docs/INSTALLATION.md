@@ -68,8 +68,8 @@ See [API_SETUP.md](API_SETUP.md) for detailed instructions on obtaining API keys
 
 ```bash
 sudo bash -c 'cat > /etc/cron.d/fail2ban-abuseipdb << "EOF"
-# Run AbuseIPDB blocker every hour
-0 * * * * root /opt/fail2ban-scripts/abuseipdb_blocker.py >> /var/log/fail2ban-abuseipdb.log 2>&1
+# Refresh AbuseIPDB blacklist daily (free API allows only 5 blacklist requests/day)
+10 5 * * * root /opt/fail2ban-scripts/abuseipdb_blocker.py >> /var/log/fail2ban-abuseipdb.log 2>&1
 
 # Update GeoIP database weekly
 0 2 * * 0 root python3 -m geoip2.scripts.update_geoip2 >> /var/log/fail2ban-geoip.log 2>&1
