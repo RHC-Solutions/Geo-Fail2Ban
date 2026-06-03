@@ -100,12 +100,12 @@ sudo tail -f /var/log/fail2ban.log
 To restrict SSH and DNS to specific IPs:
 
 ```bash
-# Edit whitelist file
-sudo nano config/whitelist.txt
+# Create your whitelist from the template (whitelist.txt is git-ignored)
+cp config/whitelist.txt.example config/whitelist.txt
 
-# Add your trusted IPs (one per line)
-# 203.0.113.10
-# 203.0.113.20
+# Edit it and add your trusted IPs, one per line
+# (replace the 203.0.113.x documentation placeholders with your real IPs)
+sudo nano config/whitelist.txt
 
 # Apply firewall rules
 sudo bash scripts/setup-firewall.sh

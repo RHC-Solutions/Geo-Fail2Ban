@@ -40,8 +40,17 @@ fi
 
 print_header "Firewall Whitelist Configuration"
 
-# Check if whitelist file exists
+# Check if whitelist file exists. It is git-ignored (it holds your real IPs),
+# so on a fresh clone create it from the template and ask the user to edit it.
 if [ ! -f "config/whitelist.txt" ]; then
+    if [ -f "config/whitelist.txt.example" ]; then
+        cp config/whitelist.txt.example config/whitelist.txt
+        print_error "Whitelist not configured yet."
+        echo "Created config/whitelist.txt from the template."
+        echo "Edit it and add your trusted IPs, then re-run this script:"
+        echo "  sudo nano config/whitelist.txt"
+        exit 1
+    fi
     print_error "Whitelist file not found: config/whitelist.txt"
     exit 1
 fi
