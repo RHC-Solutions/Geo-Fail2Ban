@@ -1,0 +1,16 @@
+[Unit]
+Description=Restore AbuseIPDB blacklist ipset and iptables rule at boot
+DefaultDependencies=no
+Before=ufw.service netfilter-persistent.service fail2ban.service network-pre.target
+Wants=network-pre.target
+ConditionPathExists=/etc/ipset-abuseipdb.conf
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/sbin/ipset -exist restore -file /etc/ipset-abuseipdb.conf
+ExecStart=/bin/sh -c '/sbin/iptables -C INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null || /sbin/iptables -I INPUT 1 -m set --match-set abuseipdb-blacklist src -j DROP'
+ExecStop=/bin/true
+
+[Install]
+WantedBy=multi-user.target

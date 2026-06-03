@@ -1,0 +1,15 @@
+[Unit]
+Description=Restore geoblock ipset from /etc/ipset-geo/ipset.conf
+DefaultDependencies=no
+Before=ufw.service netfilter-persistent.service network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/sbin/ipset -exist restore -file /etc/ipset-geo/ipset.conf
+ExecStart=/bin/sh -c '/sbin/iptables -C INPUT -m set --match-set geoblock src -j DROP 2>/dev/null || /sbin/iptables -I INPUT 1 -m set --match-set geoblock src -j DROP'
+ExecStop=/bin/true
+
+[Install]
+WantedBy=multi-user.target
