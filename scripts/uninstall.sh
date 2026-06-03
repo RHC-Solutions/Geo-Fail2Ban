@@ -41,6 +41,10 @@ done
 INSTALL_DIR="${INSTALL_DIR:-/opt/geo-fail2ban}"
 LEGACY_DIR="/opt/fail2ban-scripts"
 
+# Firewall backend helpers (removes rules from firewalld/ufw/iptables).
+# Best-effort: falls back to raw iptables below if the lib isn't present.
+[ -f "$(dirname "$0")/firewall-lib.sh" ] && . "$(dirname "$0")/firewall-lib.sh"
+
 # Check root
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${RED}✗ This script must be run as root${NC}"
@@ -91,8 +95,13 @@ print_warning "Removing ipsets, firewall rules and persistence units..."
 systemctl disable --now ipset-abuseipdb.service ipset-geo.service 2>/dev/null || true
 rm -f /etc/systemd/system/ipset-abuseipdb.service /etc/systemd/system/ipset-geo.service
 systemctl daemon-reload
-iptables -D INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null || true
-iptables -D INPUT -m set --match-set geoblock src -j DROP 2>/dev/null || true
+if command -v fw_unblock_set >/dev/null 2>&1; then
+    fw_unblock_set abuseipdb-blacklist
+    fw_unblock_set geoblock
+else
+    iptables -D INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null || true
+    iptables -D INPUT -m set --match-set geoblock src -j DROP 2>/dev/null || true
+fi
 ipset destroy abuseipdb-blacklist 2>/dev/null || true
 ipset destroy geoblock 2>/dev/null || true
 rm -f /etc/ipset-abuseipdb.conf

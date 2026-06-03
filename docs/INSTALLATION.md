@@ -2,7 +2,8 @@
 
 ## System Requirements
 
-- **OS**: Ubuntu 20.04+ / Debian 11+
+- **OS**: any systemd-based Linux (Debian/Ubuntu, RHEL/Fedora/Rocky/Alma, openSUSE, Arch, Alpine)
+- **Firewall**: firewalld, ufw, or iptables (auto-detected; installed if missing)
 - **Privileges**: Root or sudo access
 - **Network**: Outbound HTTPS access for API calls
 
