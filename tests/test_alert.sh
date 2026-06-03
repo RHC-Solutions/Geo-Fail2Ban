@@ -1,10 +1,18 @@
 #!/bin/bash
 #
 # Geo-Fail2Ban Test Script
-# Tests all components and APIs
+# Validates all components after deployment.
+#
+# Usage:  sudo bash tests/test_alert.sh [--live]
+#   --live   also run an end-to-end permanent-ban test: appends a TEST-NET IP
+#            to /var/log/abuseipdb.log, verifies the abuseipdb jail bans it,
+#            then unbans and cleans up. Sends 2 real Telegram alerts.
 #
 
-set -e
+# NOTE: no 'set -e' here on purpose - failed checks are counted, not fatal.
+
+LIVE=0
+[ "${1:-}" = "--live" ] && LIVE=1
 
 # Colors
 RED='\033[0;31m'
@@ -25,26 +33,13 @@ print_header() {
     echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}\n"
 }
 
-test_pass() {
-    echo -e "${GREEN}✓ $1${NC}"
-    ((PASSED++))
-}
-
-test_fail() {
-    echo -e "${RED}✗ $1${NC}"
-    ((FAILED++))
-}
-
-test_info() {
-    echo -e "${CYAN}ℹ $1${NC}"
-}
-
-test_warn() {
-    echo -e "${YELLOW}⚠ $1${NC}"
-}
+test_pass() { echo -e "${GREEN}✓ $1${NC}"; PASSED=$((PASSED+1)); }
+test_fail() { echo -e "${RED}✗ $1${NC}"; FAILED=$((FAILED+1)); }
+test_info() { echo -e "${CYAN}ℹ $1${NC}"; }
+test_warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
 
 # Check root
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}This script must be run as root${NC}"
     exit 1
 fi
@@ -54,231 +49,218 @@ print_header "Geo-Fail2Ban System Test"
 # ========== Section 1: System Components ==========
 print_header "1. System Components"
 
-# Test fail2ban
 if systemctl is-active --quiet fail2ban; then
     test_pass "Fail2Ban service is running"
 else
     test_fail "Fail2Ban service is not running"
 fi
 
-# Test scripts exist
-if [ -f "/opt/fail2ban-scripts/telegram_alert.py" ]; then
-    test_pass "Telegram alert script exists"
-else
-    test_fail "Telegram alert script not found"
-fi
-
-if [ -f "/opt/fail2ban-scripts/abuseipdb_blocker.py" ]; then
-    test_pass "AbuseIPDB blocker script exists"
-else
-    test_fail "AbuseIPDB blocker script not found"
-fi
-
-# Test configurations
-if [ -f "/etc/fail2ban/jail.local" ]; then
-    test_pass "Jail configuration exists"
-else
-    test_fail "Jail configuration not found"
-fi
-
-if [ -f "/etc/fail2ban/action.d/telegram.conf" ]; then
-    test_pass "Telegram action exists"
-else
-    test_fail "Telegram action not found"
-fi
-
-# ========== Section 2: Configuration Files ==========
-print_header "2. Configuration Files"
-
-if [ -f "config/.env" ]; then
-    test_pass ".env file exists"
-    
-    # Check for required variables
-    if grep -q "TELEGRAM_BOT_TOKEN" config/.env; then
-        test_pass "TELEGRAM_BOT_TOKEN configured"
+for f in /opt/fail2ban-scripts/telegram_alert.py /opt/fail2ban-scripts/abuseipdb_blocker.py; do
+    if [ -f "$f" ]; then
+        test_pass "$(basename "$f") exists"
     else
-        test_fail "TELEGRAM_BOT_TOKEN not configured"
+        test_fail "$(basename "$f") not found"
     fi
-    
-    if grep -q "TELEGRAM_CHAT_ID" config/.env; then
-        test_pass "TELEGRAM_CHAT_ID configured"
+done
+
+for f in /etc/fail2ban/jail.local \
+         /etc/fail2ban/jail.d/abuseipdb.conf \
+         /etc/fail2ban/filter.d/abuseipdb.conf \
+         /etc/fail2ban/action.d/telegram.conf; do
+    if [ -f "$f" ]; then
+        test_pass "$f exists"
     else
-        test_fail "TELEGRAM_CHAT_ID not configured"
+        test_fail "$f not found"
     fi
-    
-    if grep -q "IPINFO_API_TOKEN" config/.env; then
-        test_pass "IPINFO_API_TOKEN configured"
-    else
-        test_fail "IPINFO_API_TOKEN not configured"
-    fi
-    
-    if grep -q "ABUSEIPDB_API_KEY" config/.env; then
-        test_pass "ABUSEIPDB_API_KEY configured"
-    else
-        test_fail "ABUSEIPDB_API_KEY not configured"
-    fi
+done
+
+if [ -f /var/log/abuseipdb.log ]; then
+    test_pass "/var/log/abuseipdb.log exists (permanent-ban escalation channel)"
 else
-    test_fail ".env file not found - create with: cp config/.env.example config/.env"
+    test_fail "/var/log/abuseipdb.log missing (abuseipdb jail cannot start without it)"
 fi
 
-# ========== Section 3: Network Connectivity ==========
-print_header "3. Network Connectivity"
+# ========== Section 2: Configuration ==========
+print_header "2. Configuration"
 
-# Test Telegram API
-if curl -s -I https://api.telegram.org > /dev/null 2>&1; then
-    test_pass "Can reach Telegram API"
+# Runtime config is /etc/geo-fail2ban.conf (installed from config/.env)
+CONF=""
+if [ -f /etc/geo-fail2ban.conf ]; then
+    CONF=/etc/geo-fail2ban.conf
+    test_pass "/etc/geo-fail2ban.conf exists (runtime config)"
+    PERMS=$(stat -c %a /etc/geo-fail2ban.conf)
+    if [ "$PERMS" = "600" ]; then
+        test_pass "Config permissions are 600"
+    else
+        test_warn "Config permissions are $PERMS (fixing to 600)"
+        chmod 600 /etc/geo-fail2ban.conf
+    fi
+elif [ -f config/.env ]; then
+    CONF=config/.env
+    test_warn "Using config/.env - run install.sh to install it to /etc/geo-fail2ban.conf"
 else
-    test_fail "Cannot reach Telegram API"
+    test_fail "No config found - cp config/.env.example config/.env, edit it, run install.sh"
 fi
 
-# Test ipinfo.io API
-if curl -s -I https://ipinfo.io > /dev/null 2>&1; then
-    test_pass "Can reach ipinfo.io API"
-else
-    test_fail "Cannot reach ipinfo.io API"
+if [ -n "$CONF" ]; then
+    for key in TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID IPINFO_API_TOKEN ABUSEIPDB_API_KEY; do
+        if grep -q "^${key}=" "$CONF" && ! grep "^${key}=" "$CONF" | grep -q 'YOUR_.*_HERE'; then
+            test_pass "$key configured"
+        else
+            test_fail "$key not configured (placeholder or missing)"
+        fi
+    done
 fi
 
-# Test AbuseIPDB API
-if curl -s -I https://api.abuseipdb.com > /dev/null 2>&1; then
-    test_pass "Can reach AbuseIPDB API"
+# ========== Section 3: Firewall (ipsets + rules) ==========
+print_header "3. Firewall: ipsets and DROP rules"
+
+if ipset list -t abuseipdb-blacklist > /dev/null 2>&1; then
+    ENTRIES=$(ipset list -t abuseipdb-blacklist | awk '/Number of entries/{print $4}')
+    test_pass "abuseipdb-blacklist ipset exists ($ENTRIES IPs permanently blocked)"
 else
-    test_fail "Cannot reach AbuseIPDB API"
+    test_fail "abuseipdb-blacklist ipset missing"
+fi
+
+if iptables -C INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null; then
+    test_pass "Blacklist DROP rule present in INPUT"
+else
+    test_fail "Blacklist DROP rule missing from INPUT"
+fi
+
+if systemctl is-enabled --quiet ipset-abuseipdb.service 2>/dev/null; then
+    test_pass "ipset-abuseipdb.service enabled (survives reboot)"
+else
+    test_fail "ipset-abuseipdb.service not enabled - bans lost on reboot!"
+fi
+
+# Geoblock is optional (--skip-geo)
+if ipset list -t geoblock > /dev/null 2>&1; then
+    GENTRIES=$(ipset list -t geoblock | awk '/Number of entries/{print $4}')
+    test_pass "geoblock ipset exists ($GENTRIES CIDRs)"
+    if iptables -C INPUT -m set --match-set geoblock src -j DROP 2>/dev/null; then
+        test_pass "Geoblock DROP rule present in INPUT"
+    else
+        test_fail "geoblock ipset is populated but its DROP rule is MISSING - blocking nothing"
+    fi
+    if systemctl is-enabled --quiet ipset-geo.service 2>/dev/null; then
+        test_pass "ipset-geo.service enabled"
+    else
+        test_warn "ipset-geo.service not enabled"
+    fi
+else
+    test_info "geoblock ipset not present (installed with --skip-geo?)"
 fi
 
 # ========== Section 4: Python Dependencies ==========
 print_header "4. Python Dependencies"
 
-# Check Python modules
 if python3 -c "import requests" 2>/dev/null; then
     test_pass "requests module installed"
 else
     test_fail "requests module not installed"
 fi
 
-if python3 -c "import geoip2" 2>/dev/null; then
-    test_pass "geoip2 module installed"
+for s in telegram_alert.py abuseipdb_blocker.py; do
+    if python3 -m py_compile "/opt/fail2ban-scripts/$s" 2>/dev/null; then
+        test_pass "$s compiles"
+    else
+        test_fail "$s has syntax errors"
+    fi
+done
+
+# ========== Section 5: Fail2Ban Jails ==========
+print_header "5. Fail2Ban Jails"
+
+if fail2ban-client status sshd > /dev/null 2>&1; then
+    test_pass "sshd jail active (temporary bans)"
+    fail2ban-client status sshd | grep -E 'Currently banned|Total banned' | sed 's/^/  /'
 else
-    test_fail "geoip2 module not installed"
+    test_fail "sshd jail not found"
 fi
 
-# ========== Section 5: Fail2Ban Configuration ==========
-print_header "5. Fail2Ban Configuration"
-
-# Check if sshd jail exists
-if sudo fail2ban-client status sshd > /dev/null 2>&1; then
-    test_pass "SSH jail is configured"
-    
-    # Get jail stats
-    STATUS=$(sudo fail2ban-client status sshd)
-    echo "$STATUS" | head -10 | sed 's/^/  /'
+if fail2ban-client status abuseipdb > /dev/null 2>&1; then
+    test_pass "abuseipdb jail active (PERMANENT bans, bantime = -1)"
+    fail2ban-client status abuseipdb | grep -E 'Currently banned|Total banned' | sed 's/^/  /'
 else
-    test_fail "SSH jail not found"
+    test_fail "abuseipdb jail not found - permanent-ban escalation will not work"
 fi
 
-# ========== Section 6: API Tests ==========
+# ========== Section 6: API Connectivity ==========
 print_header "6. API Connectivity Tests"
 
-# Load .env if it exists
-if [ -f "config/.env" ]; then
-    source config/.env
-    
-    # Test ipinfo.io
+if [ -n "$CONF" ]; then
+    # shellcheck disable=SC1090
+    source "$CONF"
+
     test_info "Testing ipinfo.io API with test IP 8.8.8.8..."
-    GEOIP_RESP=$(curl -s "https://ipinfo.io/8.8.8.8?token=$IPINFO_API_TOKEN" 2>/dev/null || echo "{}")
+    GEOIP_RESP=$(curl -s --max-time 10 "https://ipinfo.io/8.8.8.8?token=$IPINFO_API_TOKEN" 2>/dev/null || echo "{}")
     if echo "$GEOIP_RESP" | grep -q '"country"'; then
         test_pass "ipinfo.io API working"
         echo "  Country: $(echo "$GEOIP_RESP" | grep -o '"country":"[^"]*' | cut -d'"' -f4)"
-        echo "  City: $(echo "$GEOIP_RESP" | grep -o '"city":"[^"]*' | cut -d'"' -f4)"
-        echo "  ISP: $(echo "$GEOIP_RESP" | grep -o '"org":"[^"]*' | cut -d'"' -f4)"
     else
         test_fail "ipinfo.io API test failed (check token)"
     fi
-    
-    # Test AbuseIPDB
+
     test_info "Testing AbuseIPDB API with test IP 8.8.8.8..."
-    ABUSE_RESP=$(curl -s -G https://api.abuseipdb.com/api/v2/check \
+    ABUSE_RESP=$(curl -s --max-time 10 -G https://api.abuseipdb.com/api/v2/check \
         -d "ipAddress=8.8.8.8" \
         -d "maxAgeInDays=90" \
         -H "Key: $ABUSEIPDB_API_KEY" \
         -H "Accept: application/json" 2>/dev/null || echo "{}")
-    
     if echo "$ABUSE_RESP" | grep -q '"abuseConfidenceScore"'; then
         test_pass "AbuseIPDB API working"
-        SCORE=$(echo "$ABUSE_RESP" | grep -o '"abuseConfidenceScore":[0-9]*' | cut -d':' -f2)
-        echo "  Abuse Score: $SCORE%"
     else
         test_fail "AbuseIPDB API test failed (check API key)"
     fi
-    
-    # Test Telegram
+
     test_info "Testing Telegram Bot..."
-    TELEGRAM_TEST=$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe" 2>/dev/null || echo "{}")
-    
+    TELEGRAM_TEST=$(curl -s --max-time 10 -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe" 2>/dev/null || echo "{}")
     if echo "$TELEGRAM_TEST" | grep -q '"ok":true'; then
-        test_pass "Telegram Bot token is valid"
         BOT_NAME=$(echo "$TELEGRAM_TEST" | grep -o '"first_name":"[^"]*' | cut -d'"' -f4)
-        echo "  Bot Name: $BOT_NAME"
+        test_pass "Telegram Bot token is valid (bot: $BOT_NAME)"
     else
         test_fail "Telegram Bot token is invalid"
     fi
 else
-    test_warn ".env file not found - skipping API tests"
+    test_warn "No config found - skipping API tests"
 fi
 
 # ========== Section 7: Cron Jobs ==========
 print_header "7. Cron Jobs"
 
-if [ -f "/etc/cron.d/fail2ban-abuseipdb" ]; then
-    test_pass "Cron jobs configured"
-    echo ""
-    echo "Scheduled tasks:"
-    cat /etc/cron.d/fail2ban-abuseipdb | grep -v "^#" | grep -v "^$" | sed 's/^/  /'
+if [ -f /etc/cron.d/fail2ban-abuseipdb ]; then
+    if grep -qE '^[0-9]+ \* \* \* \*' /etc/cron.d/fail2ban-abuseipdb; then
+        test_fail "Blacklist cron runs HOURLY - the free API allows 5/day, switch to daily!"
+    else
+        test_pass "Daily blacklist import cron configured"
+    fi
+    grep -v '^#' /etc/cron.d/fail2ban-abuseipdb | grep -v '^$' | sed 's/^/  /'
 else
-    test_fail "Cron jobs not configured"
+    test_fail "Cron job /etc/cron.d/fail2ban-abuseipdb not configured"
 fi
 
-# ========== Section 8: Permissions ==========
-print_header "8. File Permissions"
-
-if [ -x "/opt/fail2ban-scripts/telegram_alert.py" ]; then
-    test_pass "telegram_alert.py is executable"
-else
-    test_warn "telegram_alert.py is not executable (attempting fix)"
-    chmod +x /opt/fail2ban-scripts/telegram_alert.py
-fi
-
-if [ -x "/opt/fail2ban-scripts/abuseipdb_blocker.py" ]; then
-    test_pass "abuseipdb_blocker.py is executable"
-else
-    test_warn "abuseipdb_blocker.py is not executable (attempting fix)"
-    chmod +x /opt/fail2ban-scripts/abuseipdb_blocker.py
-fi
-
-# ========== Section 9: Logs ==========
-print_header "9. Log Files"
-
-if [ -d "/var/log/fail2ban-geo" ]; then
-    test_pass "Log directory exists"
-else
-    test_warn "Log directory not found (creating)"
-    mkdir -p /var/log/fail2ban-geo
-    chmod 755 /var/log/fail2ban-geo
-fi
-
-if [ -f "/var/log/fail2ban.log" ]; then
-    test_pass "Fail2Ban log exists"
-    RECENT=$(sudo tail -3 /var/log/fail2ban.log)
-    echo "  Recent entries:"
-    echo "$RECENT" | sed 's/^/    /'
-else
-    test_warn "Fail2Ban log not found"
+# ========== Section 8: Live End-to-End Test (optional) ==========
+if [ "$LIVE" -eq 1 ]; then
+    print_header "8. LIVE Test: permanent-ban pipeline (TEST-NET IP)"
+    TEST_IP="192.0.2.123"   # RFC 5737 TEST-NET-1, never routed
+    test_info "Appending $TEST_IP to /var/log/abuseipdb.log (2 Telegram alerts expected)..."
+    echo "$TEST_IP" >> /var/log/abuseipdb.log
+    sleep 10
+    if fail2ban-client status abuseipdb | grep -q "$TEST_IP"; then
+        test_pass "abuseipdb jail permanently banned $TEST_IP from log append"
+        fail2ban-client set abuseipdb unbanip "$TEST_IP" > /dev/null 2>&1
+        test_info "Test IP unbanned and cleaned up"
+    else
+        test_fail "abuseipdb jail did NOT pick up $TEST_IP (check fail2ban backend/logs)"
+    fi
 fi
 
 # ========== Summary ==========
 print_header "Test Summary"
 
 TOTAL=$((PASSED + FAILED))
-PERCENT=$((PASSED * 100 / TOTAL))
+PERCENT=$((PASSED * 100 / (TOTAL > 0 ? TOTAL : 1)))
 
 echo -e "${GREEN}Passed:${NC} $PASSED/$TOTAL"
 echo -e "${RED}Failed:${NC} $FAILED/$TOTAL"
