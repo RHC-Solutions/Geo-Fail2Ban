@@ -54,7 +54,7 @@ sudo test -f config/.env && echo "✓ .env exists" || echo "✗ .env missing"
 sudo grep TELEGRAM config/.env
 
 # 3. Check if script is executable
-sudo test -x /opt/fail2ban-scripts/telegram_alert.py && echo "✓ Executable" || echo "✗ Not executable"
+sudo test -x /opt/geo-fail2ban/telegram_alert.py && echo "✓ Executable" || echo "✗ Not executable"
 
 # 4. Check fail2ban logs
 sudo tail -20 /var/log/fail2ban.log | grep -i telegram
@@ -200,7 +200,7 @@ sudo cat /etc/cron.d/fail2ban-abuseipdb
 sudo grep CRON /var/log/syslog | tail -20
 
 # 3. Run script manually
-sudo python3 /opt/fail2ban-scripts/abuseipdb_blocker.py
+sudo python3 /opt/geo-fail2ban/abuseipdb_blocker.py
 ```
 
 **Solutions**:
@@ -208,7 +208,7 @@ sudo python3 /opt/fail2ban-scripts/abuseipdb_blocker.py
 1. **Missing cron job**:
    ```bash
    sudo bash -c 'cat > /etc/cron.d/fail2ban-abuseipdb << "EOF"
-   0 * * * * root /opt/fail2ban-scripts/abuseipdb_blocker.py >> /var/log/fail2ban-abuseipdb.log 2>&1
+   0 * * * * root /opt/geo-fail2ban/abuseipdb_blocker.py >> /var/log/fail2ban-abuseipdb.log 2>&1
    EOF'
    ```
 
@@ -408,13 +408,13 @@ sudo tail -f /var/log/fail2ban.log
 
 ```bash
 # Test alert script
-sudo python3 /opt/fail2ban-scripts/telegram_alert.py 192.168.1.1 sshd ban
+sudo python3 /opt/geo-fail2ban/telegram_alert.py 192.168.1.1 sshd ban
 
 # Test blocker script
-sudo python3 /opt/fail2ban-scripts/abuseipdb_blocker.py
+sudo python3 /opt/geo-fail2ban/abuseipdb_blocker.py
 
 # Verbose output
-sudo python3 -u /opt/fail2ban-scripts/telegram_alert.py 192.168.1.1 sshd ban 2>&1
+sudo python3 -u /opt/geo-fail2ban/telegram_alert.py 192.168.1.1 sshd ban 2>&1
 ```
 
 ---

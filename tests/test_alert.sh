@@ -14,6 +14,9 @@
 LIVE=0
 [ "${1:-}" = "--live" ] && LIVE=1
 
+# Install directory (matches install.sh; override with INSTALL_DIR=...)
+INSTALL_DIR="${INSTALL_DIR:-/opt/geo-fail2ban}"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -55,7 +58,7 @@ else
     test_fail "Fail2Ban service is not running"
 fi
 
-for f in /opt/fail2ban-scripts/telegram_alert.py /opt/fail2ban-scripts/abuseipdb_blocker.py; do
+for f in "$INSTALL_DIR/telegram_alert.py" "$INSTALL_DIR/abuseipdb_blocker.py"; do
     if [ -f "$f" ]; then
         test_pass "$(basename "$f") exists"
     else
@@ -162,7 +165,7 @@ else
 fi
 
 for s in telegram_alert.py abuseipdb_blocker.py; do
-    if python3 -m py_compile "/opt/fail2ban-scripts/$s" 2>/dev/null; then
+    if python3 -m py_compile "$INSTALL_DIR/$s" 2>/dev/null; then
         test_pass "$s compiles"
     else
         test_fail "$s has syntax errors"

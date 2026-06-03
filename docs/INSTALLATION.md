@@ -36,16 +36,16 @@ sudo pip3 install requests --break-system-packages
 ### 2. Create Required Directories
 
 ```bash
-sudo mkdir -p /opt/fail2ban-scripts
+sudo mkdir -p /opt/geo-fail2ban
 sudo mkdir -p /var/log/fail2ban-geo
 ```
 
 ### 3. Install Scripts
 
 ```bash
-sudo cp scripts/telegram_alert.py /opt/fail2ban-scripts/
-sudo cp scripts/abuseipdb_blocker.py /opt/fail2ban-scripts/
-sudo chmod +x /opt/fail2ban-scripts/*.py
+sudo cp scripts/telegram_alert.py /opt/geo-fail2ban/
+sudo cp scripts/abuseipdb_blocker.py /opt/geo-fail2ban/
+sudo chmod +x /opt/geo-fail2ban/*.py
 ```
 
 ### 4. Install Configurations
@@ -69,7 +69,7 @@ See [API_SETUP.md](API_SETUP.md) for detailed instructions on obtaining API keys
 ```bash
 sudo bash -c 'cat > /etc/cron.d/fail2ban-abuseipdb << "EOF"
 # Refresh AbuseIPDB blacklist daily (free API allows only 5 blacklist requests/day)
-10 5 * * * root /opt/fail2ban-scripts/abuseipdb_blocker.py >> /var/log/fail2ban-abuseipdb.log 2>&1
+10 5 * * * root /opt/geo-fail2ban/abuseipdb_blocker.py >> /var/log/fail2ban-abuseipdb.log 2>&1
 
 # Update GeoIP database weekly
 0 2 * * 0 root python3 -m geoip2.scripts.update_geoip2 >> /var/log/fail2ban-geoip.log 2>&1
@@ -118,7 +118,7 @@ sudo bash scripts/setup-firewall.sh
 sudo bash tests/test_alert.sh
 
 # Test AbuseIPDB blocker
-sudo python3 /opt/fail2ban-scripts/abuseipdb_blocker.py
+sudo python3 /opt/geo-fail2ban/abuseipdb_blocker.py
 
 # Check current bans
 sudo fail2ban-client status sshd
@@ -138,10 +138,14 @@ sudo bash scripts/uninstall.sh
 
 ## What Gets Installed
 
+> Programs install under `/opt/geo-fail2ban` by default (override with `INSTALL_DIR=/path`).
+> Re-running `install.sh` automatically removes a previous version first, keeping
+> your `/etc/geo-fail2ban.conf` credentials.
+
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| Alert Script | `/opt/fail2ban-scripts/telegram_alert.py` | Telegram notifications with GeoIP |
-| Blocker Script | `/opt/fail2ban-scripts/abuseipdb_blocker.py` | Hourly IP import from AbuseIPDB |
+| Alert Script | `/opt/geo-fail2ban/telegram_alert.py` | Telegram notifications with GeoIP |
+| Blocker Script | `/opt/geo-fail2ban/abuseipdb_blocker.py` | Hourly IP import from AbuseIPDB |
 | Jail Config | `/etc/fail2ban/jail.local` | SSH protection rules |
 | Telegram Action | `/etc/fail2ban/action.d/telegram.conf` | Fail2Ban action handler |
 | Cron Jobs | `/etc/cron.d/fail2ban-abuseipdb` | Scheduled tasks |
