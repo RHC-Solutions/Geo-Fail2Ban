@@ -269,15 +269,21 @@ sudo tail -f /var/log/fail2ban.log | grep --color=always "Ban\|Unban"
 
 ## Firewall Integration
 
+`scripts/setup-firewall.sh` auto-detects the active backend (**firewalld**, **ufw**,
+or raw **iptables**) and applies the SSH/DNS whitelist accordingly — you don't pick
+one. The UFW commands below are just one backend's example.
+
+```bash
+# Edit whitelist (one IP per line)
+sudo nano config/whitelist.txt
+
+# Apply rules (works on firewalld / ufw / iptables)
+sudo bash scripts/setup-firewall.sh
+```
+
 ### UFW Configuration
 
 ```bash
-# Edit whitelist
-sudo nano config/whitelist.txt
-
-# Apply rules
-sudo bash scripts/setup-firewall.sh
-
 # View current rules
 sudo ufw status numbered
 ```

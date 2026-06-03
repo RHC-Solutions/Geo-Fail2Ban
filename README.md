@@ -20,6 +20,9 @@
 - 🗺️ **Country Geoblock** - optional ipset blocking whole countries (ipdeny.com zones, weekly refresh)
 - 🔁 **Reboot-safe** - systemd units restore all ipsets and firewall rules at boot
 - 🔐 **Firewall Whitelisting** - Restrict SSH/DNS to specific IPs only
+- 🧱 **Any firewall** - works with **firewalld**, **ufw**, or raw **iptables** (auto-detected)
+- 🐧 **Any Linux** - Debian/Ubuntu, RHEL/Fedora/Rocky/Alma, openSUSE, Arch, Alpine
+- 💬 **Interactive installer** - prompts for tokens & whitelist IPs (each auto-skips after 10s)
 - 📝 **Complete Audit Trail** - All events logged with threat intelligence
 
 ---
@@ -27,10 +30,10 @@
 ## 📋 Quick Start
 
 ### Prerequisites
-- **Ubuntu/Debian** Linux system
+- **Any systemd-based Linux** — Debian/Ubuntu, RHEL/Fedora/Rocky/Alma, openSUSE, Arch, or Alpine
+- A firewall: **firewalld**, **ufw**, or **iptables** — auto-detected (installed if missing)
 - **Root** or **sudo** access
-- **Fail2Ban** already installed (or will be installed)
-- **Python 3.7+**
+- **Python 3.7+** (the installer pulls the remaining dependencies for your distro)
 
 ### Installation (3 minutes)
 
@@ -39,13 +42,15 @@
 git clone https://github.com/RHC-Solutions/Geo-Fail2Ban.git
 cd Geo-Fail2Ban
 
-# 2. Configure your API credentials
-cp config/.env.example config/.env
-nano config/.env
-
-# 3. Run installation script (use --skip-geo to skip country blocking)
+# 2. Run the interactive installer (use --skip-geo to skip country blocking)
 sudo bash install.sh
 ```
+
+The installer **asks** for your Telegram bot token + chat ID, ipinfo.io token,
+AbuseIPDB key, and whitelist IPs. Each question **auto-skips after 10 seconds**
+(keeping the current value). Prefer non-interactive? Pre-fill `config/.env`
+(`cp config/.env.example config/.env && nano config/.env`) and the installer
+uses it as the defaults.
 
 **That's it! You're protected.** 🛡️
 
@@ -234,7 +239,8 @@ Geo-Fail2Ban/
 ├── scripts/
 │   ├── telegram_alert.py     # Alerts + permanent-ban escalation
 │   ├── abuseipdb_blocker.py  # Daily blacklist -> add-only ipset
-│   ├── setup-firewall.sh     # UFW firewall setup
+│   ├── firewall-lib.sh       # Backend abstraction (firewalld/ufw/iptables)
+│   ├── setup-firewall.sh     # SSH/DNS whitelist (any firewall)
 │   └── uninstall.sh          # Removal script
 ├── ipset-geo/
 │   └── update.sh             # Weekly country-zone refresh (geoblock ipset)
@@ -530,7 +536,7 @@ Found a bug? Have a question?
 
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
-| OS | Ubuntu 18.04 / Debian 10 | Ubuntu 22.04 / Debian 11+ |
+| OS | Any systemd Linux (Debian/Ubuntu, RHEL/Fedora, SUSE, Arch, Alpine) | Latest stable release |
 | CPU | 1 Core | 2+ Cores |
 | RAM | 512 MB | 2+ GB |
 | Disk | 100 MB | 1+ GB |
