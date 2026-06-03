@@ -1,7 +1,7 @@
 [Unit]
 Description=Restore AbuseIPDB blacklist ipset and iptables rule at boot
 DefaultDependencies=no
-Before=ufw.service netfilter-persistent.service fail2ban.service network-pre.target
+Before=ufw.service firewalld.service netfilter-persistent.service fail2ban.service network-pre.target
 Wants=network-pre.target
 ConditionPathExists=/etc/ipset-abuseipdb.conf
 

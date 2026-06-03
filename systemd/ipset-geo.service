@@ -1,7 +1,7 @@
 [Unit]
 Description=Restore geoblock ipset from /etc/ipset-geo/ipset.conf
 DefaultDependencies=no
-Before=ufw.service netfilter-persistent.service network-pre.target
+Before=ufw.service firewalld.service netfilter-persistent.service network-pre.target
 Wants=network-pre.target
 
 [Service]
