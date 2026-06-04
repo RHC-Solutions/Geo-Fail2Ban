@@ -26,14 +26,37 @@ fetch() {
     || { echo "WARN: fetch failed for $cc, keeping previous list" >&2; rm -f "${cc}.zone.new"; }
 }
 
-for cc in $COUNTRIES; do fetch "$cc"; done
+# Progress bar over the per-country downloads. Only drawn when stdout is a
+# terminal, so the weekly-cron log (update.sh >> ...log) stays clean.
+_progress() {  # _progress <current> <total> <label>
+  [ -t 1 ] || return 0
+  local cur=$1 total=$2 label=$3 width=30 filled pct hashes dashes
+  if [ "$total" -gt 0 ]; then
+    filled=$(( cur * width / total )); pct=$(( cur * 100 / total ))
+  else
+    filled=$width; pct=100
+  fi
+  hashes=$(printf '%*s' "$filled" '' | tr ' ' '#')
+  dashes=$(printf '%*s' "$(( width - filled ))" '' | tr ' ' '-')
+  printf '\r  [%s%s] %3d%% (%d/%d) %-16s' "$hashes" "$dashes" "$pct" "$cur" "$total" "$label"
+}
+
+TOTAL=$(( $(echo $COUNTRIES | wc -w) + $(echo $AFRICA | wc -w) ))
+DONE=0
+
+for cc in $COUNTRIES; do
+  fetch "$cc"
+  DONE=$((DONE + 1)); _progress "$DONE" "$TOTAL" "$cc"
+done
 
 : > africa.zone.new
 for cc in $AFRICA; do
   curl -fsS --max-time 20 \
     "https://www.ipdeny.com/ipblocks/data/aggregated/${cc}-aggregated.zone" \
     >> africa.zone.new 2>/dev/null || true
+  DONE=$((DONE + 1)); _progress "$DONE" "$TOTAL" "africa/$cc"
 done
+if [ -t 1 ]; then printf '\n'; fi
 if [ -s africa.zone.new ]; then
   sort -u africa.zone.new -o africa.zone
 fi

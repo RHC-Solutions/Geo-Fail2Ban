@@ -22,7 +22,7 @@
 - 🔐 **Firewall Whitelisting** - Restrict SSH/DNS to specific IPs only
 - 🧱 **Any firewall** - works with **firewalld**, **ufw**, or raw **iptables** (auto-detected)
 - 🐧 **Any Linux** - Debian/Ubuntu, RHEL/Fedora/Rocky/Alma, openSUSE, Arch, Alpine
-- 💬 **Interactive installer** - prompts for tokens & whitelist IPs (each auto-skips after 10s)
+- 💬 **Interactive installer** - prompts for tokens & whitelist IPs (each auto-skips after 60s)
 - 📝 **Complete Audit Trail** - All events logged with threat intelligence
 
 ---
@@ -47,7 +47,7 @@ sudo bash install.sh
 ```
 
 The installer **asks** for your Telegram bot token + chat ID, ipinfo.io token,
-AbuseIPDB key, and whitelist IPs. Each question **auto-skips after 10 seconds**
+AbuseIPDB key, and whitelist IPs. Each question **auto-skips after 60 seconds**
 (keeping the current value). Prefer non-interactive? Pre-fill `config/.env`
 (`cp config/.env.example config/.env && nano config/.env`) and the installer
 uses it as the defaults.

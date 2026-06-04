@@ -326,6 +326,19 @@ def main():
     jail = sys.argv[2] if len(sys.argv) > 2 else "unknown"
     ip_address = sys.argv[3] if len(sys.argv) > 3 else "0.0.0.0"
     attempts = sys.argv[4] if len(sys.argv) > 4 else "1"
+
+    # Connectivity/installation test: send a simple confirmation and exit,
+    # skipping the GeoIP/AbuseIPDB lookups, escalation and reporting.
+    # Exit status reflects whether Telegram accepted the message.
+    if action.lower() == "test":
+        server_name = get_hostname()
+        test_msg = (
+            "✅ <b>Geo-Fail2Ban — Test Alert</b>\n"
+            f"<b>Server:</b> {server_name}\n"
+            f"<b>Time:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            "Installation complete — Telegram alerts are working. 🎉"
+        )
+        sys.exit(0 if send_telegram_alert(test_msg) else 1)
     
     print(f"Processing alert: {action} - {jail} - {ip_address} - attempts: {attempts}", file=sys.stderr)
     
