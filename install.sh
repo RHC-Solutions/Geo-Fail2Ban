@@ -13,6 +13,10 @@ cd "$(dirname "$0")"
 SKIP_GEO=0
 [ "${1:-}" = "--skip-geo" ] && SKIP_GEO=1
 
+# Seconds to wait on each interactive prompt before auto-skipping. Override with
+# PROMPT_TIMEOUT=N sudo -E bash install.sh
+PROMPT_TIMEOUT="${PROMPT_TIMEOUT:-60}"
+
 # Where all program files are installed. Override with: INSTALL_DIR=/path sudo -E bash install.sh
 INSTALL_DIR="${INSTALL_DIR:-/opt/geo-fail2ban}"
 LEGACY_DIR="/opt/fail2ban-scripts"   # previous default; cleaned up on upgrade
@@ -46,10 +50,10 @@ fi
 print_header "Geo-Fail2Ban Installation"
 print_info "Install directory: $INSTALL_DIR"
 
-# Step 1: Configuration (interactive — each question auto-skips after 10 seconds)
+# Step 1: Configuration (interactive — each question auto-skips after PROMPT_TIMEOUT seconds, default 60)
 print_header "Configuration"
 CONF=/etc/geo-fail2ban.conf
-echo "Answer each prompt, or press Enter / wait 10s to skip (keeps the shown value)."
+echo "Answer each prompt, or press Enter / wait ${PROMPT_TIMEOUT}s to skip (keeps the shown value)."
 echo ""
 
 # Defaults: an existing config, else a pre-filled config/.env, else blank.
@@ -62,14 +66,14 @@ elif [ -f config/.env ]; then
     . config/.env 2>/dev/null || true
 fi
 
-# ask <VAR> <prompt> [secret] — 10s timeout; keeps the current value on skip.
+# ask <VAR> <prompt> [secret] — waits PROMPT_TIMEOUT seconds; keeps the current value on skip.
 ask() {
     local __var="$1" __prompt="$2" __secret="${3:-}" __cur="${!1:-}" __ans="" __show="${!1:-}"
     [ "$__secret" = "secret" ] && [ -n "$__cur" ] && __show="********"
     if [ -n "$__cur" ]; then
-        read -t 10 -r -p "  ${__prompt} [${__show}]: " __ans || true
+        read -t "$PROMPT_TIMEOUT" -r -p "  ${__prompt} [${__show}]: " __ans || true
     else
-        read -t 10 -r -p "  ${__prompt} (Enter/10s to skip): " __ans || true
+        read -t "$PROMPT_TIMEOUT" -r -p "  ${__prompt} (Enter/${PROMPT_TIMEOUT}s to skip): " __ans || true
     fi
     echo
     [ -n "$__ans" ] && printf -v "$__var" '%s' "$__ans"
@@ -81,12 +85,12 @@ ask TELEGRAM_CHAT_ID   "Telegram chat ID"
 ask IPINFO_API_TOKEN   "ipinfo.io API token"  secret
 ask ABUSEIPDB_API_KEY  "AbuseIPDB API key"    secret
 
-read -t 10 -r -p "  Trusted whitelist IPs, space-separated (Enter/10s to skip): " WL_IPS || true
+read -t "$PROMPT_TIMEOUT" -r -p "  Trusted whitelist IPs, space-separated (Enter/${PROMPT_TIMEOUT}s to skip): " WL_IPS || true
 echo
 
 # Geoblock downloads country zone files; ask unless --skip-geo was passed.
 if [ "$SKIP_GEO" -eq 0 ]; then
-    read -t 10 -r -p "  Enable country geoblock (downloads zone files)? (Y/n, 10s): " _geo || true
+    read -t "$PROMPT_TIMEOUT" -r -p "  Enable country geoblock (downloads zone files)? (Y/n, ${PROMPT_TIMEOUT}s): " _geo || true
     echo
     case "${_geo:-}" in [Nn]*) SKIP_GEO=1 ;; esac
 fi
@@ -229,7 +233,7 @@ fi
 # Step 6b: Optionally apply the SSH/DNS whitelist now (only if IPs were given)
 if [ -n "${WL_IPS:-}" ]; then
     print_warning "Restricting SSH/DNS to your whitelist will block all other sources."
-    read -t 10 -r -p "  Apply the SSH/DNS whitelist now via $FW_BACKEND? (y/N, 10s): " _apply || true
+    read -t "$PROMPT_TIMEOUT" -r -p "  Apply the SSH/DNS whitelist now via $FW_BACKEND? (y/N, ${PROMPT_TIMEOUT}s): " _apply || true
     echo
     case "${_apply:-}" in
         [Yy]*)
