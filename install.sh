@@ -283,6 +283,15 @@ iptables -C INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null
     || { print_error "Blacklist DROP rule missing"; FAIL=1; }
 [ "$FAIL" -ne 0 ] && exit 1
 
+# Step 11: Send a Telegram test alert so you can confirm it works end-to-end.
+# Non-fatal: a delivery failure only warns (the rest of the install is fine).
+print_info "Sending a test alert to Telegram..."
+if "$INSTALL_DIR/telegram_alert.py" test >/dev/null 2>&1; then
+    print_success "Test alert sent — check your Telegram chat"
+else
+    print_error "Could not send Telegram test alert — verify TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID in $CONF"
+fi
+
 print_header "Installation Complete! 🎉"
 
 echo "How it works:"
