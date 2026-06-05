@@ -4,9 +4,14 @@
 # Validates all components after deployment.
 #
 # Usage:  sudo bash tests/test_alert.sh [--live]
+#
+#   Standalone health check — run it any time. It sends one Telegram "test
+#   alert" (the same one install.sh fires at the end) so you can confirm
+#   delivery, and validates components, config, firewall, jails and APIs.
+#
 #   --live   also run an end-to-end permanent-ban test: appends a TEST-NET IP
 #            to /var/log/abuseipdb.log, verifies the abuseipdb jail bans it,
-#            then unbans and cleans up. Sends 2 real Telegram alerts.
+#            then unbans and cleans up. Sends 2 more Telegram alerts.
 #
 
 # NOTE: no 'set -e' here on purpose - failed checks are counted, not fatal.
@@ -224,6 +229,23 @@ if [ -n "$CONF" ]; then
         test_pass "Telegram Bot token is valid (bot: $BOT_NAME)"
     else
         test_fail "Telegram Bot token is invalid"
+    fi
+
+    # Actually deliver a test alert to the chat (same 'test' action install.sh
+    # runs). Prefer the installed script; fall back to a direct sendMessage so
+    # this works even before install / regardless of config location.
+    test_info "Sending a Telegram test alert (check your chat)..."
+    if [ -f /etc/geo-fail2ban.conf ] && [ -f "$INSTALL_DIR/telegram_alert.py" ] \
+       && python3 "$INSTALL_DIR/telegram_alert.py" test >/dev/null 2>&1; then
+        test_pass "Telegram test alert sent via telegram_alert.py — check your chat"
+    elif [ -n "${TELEGRAM_CHAT_ID:-}" ] && \
+         curl -s --max-time 10 "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -d "chat_id=$TELEGRAM_CHAT_ID" \
+            --data-urlencode "text=✅ Geo-Fail2Ban test alert — $(hostname -f 2>/dev/null || hostname) $(date '+%F %T')" \
+            2>/dev/null | grep -q '"ok":true'; then
+        test_pass "Telegram test alert sent — check your chat"
+    else
+        test_fail "Could not send Telegram test alert (check TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)"
     fi
 else
     test_warn "No config found - skipping API tests"
