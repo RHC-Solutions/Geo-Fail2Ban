@@ -89,10 +89,27 @@ read -t "$PROMPT_TIMEOUT" -r -p "  Trusted whitelist IPs, space-separated (Enter
 echo
 
 # Geoblock downloads country zone files; ask unless --skip-geo was passed.
+# On update, default to the state it's already in (enabled if its cron/unit
+# exists), so skipping keeps the current setting instead of forcing a default.
 if [ "$SKIP_GEO" -eq 0 ]; then
-    read -t "$PROMPT_TIMEOUT" -r -p "  Enable country geoblock (downloads zone files)? (Y/n, ${PROMPT_TIMEOUT}s): " _geo || true
+    if [ -f /etc/cron.d/ipset-geo ] || [ -f /etc/systemd/system/ipset-geo.service ]; then
+        _geo_def="Y" _geo_hint="Y/n"          # currently enabled -> keep enabled on skip
+    elif [ -f "$CONF" ]; then
+        _geo_def="N" _geo_hint="y/N"          # config exists, geoblock not installed -> keep disabled
+    else
+        _geo_def="Y" _geo_hint="Y/n"          # fresh install -> default on
+    fi
+    read -t "$PROMPT_TIMEOUT" -r -p "  Enable country geoblock (downloads zone files)? (${_geo_hint}, ${PROMPT_TIMEOUT}s): " _geo || true
     echo
-    case "${_geo:-}" in [Nn]*) SKIP_GEO=1 ;; esac
+    case "${_geo:-$_geo_def}" in [Nn]*) SKIP_GEO=1 ;; esac
+fi
+
+# Country list — only relevant when geoblock is enabled. Pre-seed the default
+# from the template so a fresh install shows it; on update the existing value
+# (sourced from $CONF above) is shown and kept unless you type a new one.
+if [ "$SKIP_GEO" -eq 0 ]; then
+    : "${GEOBLOCK_COUNTRIES:=$(grep -E '^GEOBLOCK_COUNTRIES=' config/.env.example | head -1 | cut -d'"' -f2)}"
+    ask GEOBLOCK_COUNTRIES "Countries to geoblock (space-separated ipdeny codes)"
 fi
 
 # Seed the config from an existing file or the template, then write the answers.
@@ -112,6 +129,9 @@ set_conf TELEGRAM_BOT_TOKEN "${TELEGRAM_BOT_TOKEN:-}"
 set_conf TELEGRAM_CHAT_ID   "${TELEGRAM_CHAT_ID:-}"
 set_conf IPINFO_API_TOKEN   "${IPINFO_API_TOKEN:-}"
 set_conf ABUSEIPDB_API_KEY  "${ABUSEIPDB_API_KEY:-}"
+# Only write the country list when we actually have one, so skipping the prompt
+# keeps whatever is already in $CONF (or the template default) rather than blanking it.
+[ -n "${GEOBLOCK_COUNTRIES:-}" ] && set_conf GEOBLOCK_COUNTRIES "${GEOBLOCK_COUNTRIES}"
 chmod 600 "$CONF"
 print_success "Configuration written to $CONF"
 
