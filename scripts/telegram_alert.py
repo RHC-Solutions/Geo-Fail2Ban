@@ -66,7 +66,7 @@ def get_hostname():
         if not hostname:
             hostname = socket.getfqdn()
         return hostname
-    except:
+    except Exception:
         return socket.getfqdn()
 
 def get_geoip_info(ip_address):
@@ -192,7 +192,7 @@ def format_telegram_message(action, jail, ip_address, attempts, geoip_data, abus
     message += f"<b>Time:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     
     # GeoIP Information
-    if geoip_data and geoip_data.get('success'):
+    if geoip_data is not None:
         message += f"\n🌍 <b>GeoIP Information</b>\n"
         
         # Country
@@ -292,7 +292,10 @@ def send_telegram_alert(message):
             print("Telegram alert sent successfully", file=sys.stderr)
             return True
         else:
-            error_msg = response.json() if response.status_code != 200 else str(response.status_code)
+            try:
+                error_msg = response.json()
+            except Exception:
+                error_msg = response.text or str(response.status_code)
             print(f"Failed to send Telegram alert: {error_msg}", file=sys.stderr)
             return False
     except Exception as e:
@@ -357,7 +360,7 @@ def main():
     # Skip when the ban already comes from the permanent jail itself.
     escalated = False
     if action.lower() == "banned" and jail != PERMANENT_JAIL and abuse_data:
-        score = abuse_data.get('abuseConfidenceScore', 0) or 0
+        score = abuse_data.get('abuseConfidenceScore', 0)
         if score >= PERMANENT_SCORE_THRESHOLD:
             escalated = escalate_to_permanent_ban(ip_address)
 
