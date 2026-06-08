@@ -1,4 +1,18 @@
-# 🚀 Geo-Fail2Ban
+# RHC Solutions
+
+```text
+ ____  _   _  ____    ____        _       _   _
+|  _ \| | | |/ ___|  / ___|  ___ | |_   _| |_(_) ___  _ __  ___
+| |_) | |_| | |      \___ \ / _ \| | | | | __| |/ _ \| '_ \/ __|
+|  _ <|  _  | |___    ___) | (_) | | |_| | |_| | (_) | | | \__ \
+|_| \_\_| |_|\____|  |____/ \___/|_|\__,_|\__|_|\___/|_| |_|___/
+```
+
+**Website:** [rhcsolutions.com](https://rhcsolutions.com) &nbsp;·&nbsp; **Telegram:** [t.me/rhcsolutions](https://t.me/rhcsolutions)
+
+---
+
+## 🚀 Geo-Fail2Ban
 
 **Advanced Fail2Ban with GeoIP Telegram Alerts, AbuseIPDB Integration & Automatic IP Blocking**
 
@@ -598,20 +612,6 @@ Built with:
 - AbuseIPDB integration
 - Automatic IP blocking
 - Firewall whitelisting
-
----
-
-# RHC Solutions
-
-```text
- ____  _   _  ____    ____        _       _   _
-|  _ \| | | |/ ___|  / ___|  ___ | |_   _| |_(_) ___  _ __  ___
-| |_) | |_| | |      \___ \ / _ \| | | | | __| |/ _ \| '_ \/ __|
-|  _ <|  _  | |___    ___) | (_) | | |_| | |_| | (_) | | | \__ \
-|_| \_\_| |_|\____|  |____/ \___/|_|\__,_|\__|_|\___/|_| |_|___/
-```
-
-**Website:** [rhcsolutions.com](https://rhcsolutions.com) &nbsp;·&nbsp; **Telegram:** [t.me/rhcsolutions](https://t.me/rhcsolutions)
 
 ---
 
