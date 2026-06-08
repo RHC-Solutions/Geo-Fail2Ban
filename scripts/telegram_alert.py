@@ -48,8 +48,25 @@ REPORT_CATEGORIES = _cfg.get('REPORT_CATEGORIES', '18,22,23')
 # >= this threshold is also written to ABUSEIPDB_LOG, where the 'abuseipdb'
 # jail (maxretry=1, bantime=-1) picks it up and bans it forever.
 PERMANENT_JAIL = "abuseipdb"
-PERMANENT_SCORE_THRESHOLD = int(_cfg.get('ABUSE_THRESHOLD')
-                                or _cfg.get('ABUSE_SCORE_THRESHOLD') or '75')
+
+def _parse_permanent_score_threshold(cfg, default=75):
+    raw = cfg.get('ABUSE_THRESHOLD')
+    if raw is None or str(raw).strip() == '':
+        raw = cfg.get('ABUSE_SCORE_THRESHOLD')
+
+    if raw is None or str(raw).strip() == '':
+        return default
+
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        print(
+            f"WARNING: Invalid ABUSE_THRESHOLD/ABUSE_SCORE_THRESHOLD value '{raw}', using default {default}",
+            file=sys.stderr
+        )
+        return default
+
+PERMANENT_SCORE_THRESHOLD = _parse_permanent_score_threshold(_cfg)
 ABUSEIPDB_LOG = "/var/log/abuseipdb.log"
 IPSET_BLACKLIST = "abuseipdb-blacklist"
 
@@ -60,7 +77,7 @@ def get_hostname():
         if not hostname:
             hostname = socket.getfqdn()
         return hostname
-    except:
+    except Exception:
         return socket.getfqdn()
 
 def get_geoip_info(ip_address):
@@ -294,7 +311,10 @@ def send_telegram_alert(message):
             print("Telegram alert sent successfully", file=sys.stderr)
             return True
         else:
-            error_msg = response.json() if response.status_code != 200 else str(response.status_code)
+            try:
+                error_msg = response.json()
+            except ValueError:
+                error_msg = response.text or str(response.status_code)
             print(f"Failed to send Telegram alert: {error_msg}", file=sys.stderr)
             return False
     except Exception as e:
@@ -359,7 +379,9 @@ def main():
     # Skip when the ban already comes from the permanent jail itself.
     escalated = False
     if action.lower() == "banned" and jail != PERMANENT_JAIL and abuse_data:
-        score = abuse_data.get('abuseConfidenceScore', 0) or 0
+        score = abuse_data.get('abuseConfidenceScore', 0)
+        if score is None:
+            score = 0
         if score >= PERMANENT_SCORE_THRESHOLD:
             escalated = escalate_to_permanent_ban(ip_address)
 
