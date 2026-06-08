@@ -222,7 +222,7 @@ if [ "$SKIP_GEO" -eq 0 ]; then
     cp cron/ipset-geo /etc/cron.d/ipset-geo
     sed -i "s#/opt/geo-fail2ban#$INSTALL_DIR#g" /etc/cron.d/ipset-geo
     print_info "Downloading country zone files (this can take a minute)..."
-    "$INSTALL_DIR/ipset-geo/update.sh" || print_error "geoblock refresh failed (will retry via weekly cron)"
+    "$INSTALL_DIR/ipset-geo/update.sh" || print_error "geoblock refresh failed (will retry via daily cron)"
     fw_block_set geoblock
     [ "$FW_BACKEND" = "firewalld" ] && sed -i '/--match-set geoblock/d' /etc/systemd/system/ipset-geo.service
     print_success "Geoblock active (countries from GEOBLOCK_COUNTRIES in /etc/geo-fail2ban.conf)"
