@@ -13,11 +13,11 @@
 - 🚫 **Real-time SSH Intrusion Detection** - 5 failed attempts = automatic 24h ban
 - ⛔ **Permanent Ban Escalation** - banned IPs with AbuseIPDB score ≥ 75% are banned FOREVER (`bantime = -1`)
 - 📱 **Telegram Alerts** - explicit `BANNED` / `UNBANNED` headers, with permanent-ban status on every unban
-- 🌍 **GeoIP Location Data** - See country, city, timezone, ISP of attacking IP
+- 🌍 **GeoIP Location Data** - See country (with 🏴 flag emoji), city, timezone, ISP of attacking IP
 - 🔴 **AbuseIPDB Integration** - Check IP reputation scores (0-100%)
 - 🤖 **Automatic IP Reporting** - Contribute to community threat database
 - 📊 **Daily Blacklist Import** - AbuseIPDB blacklist into an add-only ipset (~10,000 IPs, never expires)
-- 🗺️ **Country Geoblock** - optional ipset blocking whole countries (ipdeny.com zones, weekly refresh)
+- 🗺️ **Country Geoblock** - permanently drops whole countries at the firewall via ipset. Default block list: 🇨🇳 China, 🇻🇳 Vietnam, 🇮🇳 India, 🇧🇩 Bangladesh, 🇵🇰 Pakistan, 🇳🇬 Nigeria, 🇦🇴 Angola. Zone files **auto-sync daily** from ipdeny.com
 - 🔁 **Reboot-safe** - systemd units restore all ipsets and firewall rules at boot
 - 🔐 **Firewall Whitelisting** - Restrict SSH/DNS to specific IPs only
 - 🧱 **Any firewall** - works with **firewalld**, **ufw**, or raw **iptables** (auto-detected)
@@ -111,11 +111,29 @@ REPORT_CATEGORIES="18,22,23" # Categories reported back to AbuseIPDB
 BLACKLIST_LIMIT=10000        # Max IPs per daily blacklist import
 
 # Geoblock (ipdeny.com country codes; empty = block none)
-GEOBLOCK_COUNTRIES="cn in vn pk bd ru"
+# Defaults: cn=China vn=Vietnam in=India bd=Bangladesh pk=Pakistan ng=Nigeria ao=Angola
+GEOBLOCK_COUNTRIES="cn vn in bd pk ng ao"
 ```
 
 The installer copies this file to `/etc/geo-fail2ban.conf` (chmod 600) — that
 is what the scripts read at runtime. Edit that file to change settings later.
+
+#### Country Geoblock (auto-sync)
+
+Every country in `GEOBLOCK_COUNTRIES` is **dropped at the firewall permanently**
+(no expiry) via the `geoblock` ipset. A daily cron job
+(`/etc/cron.d/ipset-geo`) **auto-syncs** the country IP ranges from
+[ipdeny.com](https://www.ipdeny.com), so the block stays current as ranges
+change. On reboot the `ipset-geo` systemd unit restores the set and its DROP
+rule.
+
+Add or remove countries by editing `GEOBLOCK_COUNTRIES` in
+`/etc/geo-fail2ban.conf` (space-separated [ipdeny country codes](https://www.ipdeny.com/ipblocks/)),
+then re-sync immediately instead of waiting for the daily cron:
+
+```bash
+sudo /opt/geo-fail2ban/ipset-geo/update.sh
+```
 
 ### Firewall Whitelist - `config/whitelist.txt`
 
@@ -158,7 +176,7 @@ Action: 🚫 Banned (temporary, expires per jail bantime)
 Time: 2026-05-28 23:45:12
 
 🌍 GeoIP Information
-Country: FI
+Country: 🇫🇮 FI
 Region: Uusimaa
 City: Helsinki
 Timezone: Europe/Helsinki
@@ -213,7 +231,8 @@ In parallel:
   • Daily: AbuseIPDB blacklist (score ≥ 75) imported into the add-only
     'abuseipdb-blacklist' ipset → dropped at the top of INPUT, forever.
     (The free API allows only 5 blacklist downloads/day — do NOT run hourly.)
-  • Weekly: country zone files refresh the 'geoblock' ipset (optional).
+  • Daily: country zone files auto-sync the 'geoblock' ipset from ipdeny.com
+    (default: cn vn in bd pk ng ao — permanent firewall DROP; --skip-geo to disable).
   • On boot: systemd units restore both ipsets and their DROP rules.
 ```
 
@@ -243,13 +262,13 @@ Geo-Fail2Ban/
 │   ├── setup-firewall.sh     # SSH/DNS whitelist (any firewall)
 │   └── uninstall.sh          # Removal script
 ├── ipset-geo/
-│   └── update.sh             # Weekly country-zone refresh (geoblock ipset)
+│   └── update.sh             # Daily country-zone auto-sync (geoblock ipset)
 ├── systemd/
 │   ├── ipset-abuseipdb.service  # Restore blacklist ipset + rule at boot
 │   └── ipset-geo.service        # Restore geoblock ipset + rule at boot
 ├── cron/
 │   ├── fail2ban-abuseipdb    # Daily blacklist import (API limit: 5/day)
-│   └── ipset-geo             # Weekly geoblock refresh
+│   └── ipset-geo             # Daily geoblock auto-sync
 ├── docs/
 │   ├── INSTALLATION.md       # Detailed setup guide
 │   ├── CONFIGURATION.md      # Configuration details
@@ -579,6 +598,20 @@ Built with:
 - AbuseIPDB integration
 - Automatic IP blocking
 - Firewall whitelisting
+
+---
+
+## 🏢 Maintained by RHC Solutions
+
+```text
+ ____  _   _  ____    ____        _       _   _
+|  _ \| | | |/ ___|  / ___|  ___ | |_   _| |_(_) ___  _ __  ___
+| |_) | |_| | |      \___ \ / _ \| | | | | __| |/ _ \| '_ \/ __|
+|  _ <|  _  | |___    ___) | (_) | | |_| | |_| | (_) | | | \__ \
+|_| \_\_| |_|\____|  |____/ \___/|_|\__,_|\__|_|\___/|_| |_|___/
+```
+
+🌐 Website: [rhcsolutions.com](https://rhcsolutions.com) · 💬 Telegram: [t.me/rhcsolutions](https://t.me/rhcsolutions)
 
 ---
 

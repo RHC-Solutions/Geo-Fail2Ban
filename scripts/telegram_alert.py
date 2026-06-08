@@ -4,7 +4,6 @@ Fail2Ban Telegram Alert Script with GeoIP and AbuseIPDB Integration
 """
 
 import sys
-import json
 import requests
 import socket
 import os
@@ -14,6 +13,13 @@ from datetime import datetime
 # Configuration is read from /etc/geo-fail2ban.conf (KEY=value lines).
 # Secrets live there - never hardcode them here (this file is in git).
 CONFIG_FILE = "/etc/geo-fail2ban.conf"
+
+def country_flag(country_code):
+    """Convert a 2-letter ISO country code into its flag emoji (e.g. PT -> 🇵🇹)."""
+    cc = (country_code or "").strip().upper()
+    if len(cc) != 2 or not cc.isalpha():
+        return ""
+    return "".join(chr(0x1F1E6 + ord(c) - ord('A')) for c in cc)
 
 def load_config(path=CONFIG_FILE):
     cfg = {}
@@ -75,7 +81,6 @@ def get_geoip_info(ip_address):
             data = response.json()
             # Add success flag for consistency
             data['success'] = True
-            print(f"DEBUG: GeoIP response: {json.dumps(data, indent=2)}", file=sys.stderr)
             return data
         else:
             print(f"GeoIP API error: {response.status_code}", file=sys.stderr)
@@ -193,7 +198,8 @@ def format_telegram_message(action, jail, ip_address, attempts, geoip_data, abus
         # Country
         country_code = geoip_data.get('country', 'N/A')
         if country_code and country_code != 'N/A':
-            message += f"<b>Country:</b> {country_code}\n"
+            flag = country_flag(country_code)
+            message += f"<b>Country:</b> {flag + ' ' if flag else ''}{country_code}\n"
         
         # Region
         region = geoip_data.get('region', 'N/A')

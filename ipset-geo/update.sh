@@ -12,7 +12,7 @@ TMP_SET=${SET}_tmp
 CONF=/etc/geo-fail2ban.conf
 # shellcheck disable=SC1090
 [ -r "$CONF" ] && . "$CONF"
-COUNTRIES="${GEOBLOCK_COUNTRIES:-cn in vn pk bd ru}"
+COUNTRIES="${GEOBLOCK_COUNTRIES:-cn vn in bd pk ng ao}"
 AFRICA="${GEOBLOCK_AFRICA:-dz ao bj bw bf bi cv cm cf td km cg cd ci dj eg gq er sz et ga gm gh gn gw ke ls lr ly mg mw ml mr mu ma mz na ne ng rw st sn sc sl so za ss sd tz tg tn ug eh zm zw}"
 
 mkdir -p "$LIST_DIR"
@@ -27,7 +27,7 @@ fetch() {
 }
 
 # Progress bar over the per-country downloads. Only drawn when stdout is a
-# terminal, so the weekly-cron log (update.sh >> ...log) stays clean.
+# terminal, so the daily-cron log (update.sh >> ...log) stays clean.
 _progress() {  # _progress <current> <total> <label>
   [ -t 1 ] || return 0
   local cur=$1 total=$2 label=$3 width=30 filled pct hashes dashes

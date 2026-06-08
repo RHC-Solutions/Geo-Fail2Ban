@@ -1,2 +1,4 @@
-# Refresh geoblock ipset weekly (Sun 04:17 UTC)
-17 4 * * 0 root /opt/geo-fail2ban/ipset-geo/update.sh >> /var/log/ipset-geo.log 2>&1
+# Refresh geoblock ipset daily (04:17 UTC). ipdeny.com regenerates its
+# aggregated zone files ~daily and the download is unmetered, so daily keeps
+# country ranges current with negligible cost.
+17 4 * * * root /opt/geo-fail2ban/ipset-geo/update.sh >> /var/log/ipset-geo.log 2>&1
