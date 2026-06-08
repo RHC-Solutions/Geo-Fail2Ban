@@ -14,6 +14,9 @@ logs/
 *.swp
 *.swo
 
+# Claude Code local config + auto-sync hook (personal, not for the repo)
+.claude/
+
 # IDE
 .vscode/
 .idea/
