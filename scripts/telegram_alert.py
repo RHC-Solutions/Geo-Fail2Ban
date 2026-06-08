@@ -151,6 +151,13 @@ def escalate_to_permanent_ban(ip_address):
         print(f"Error escalating {ip_address} to permanent ban: {e}", file=sys.stderr)
         return False
 
+def country_flag(code):
+    """Return the regional-indicator flag emoji for a 2-letter ISO country code
+    (e.g. 'PT' -> '🇵🇹'). Empty string if the code isn't a valid 2-letter code."""
+    if not code or len(code) != 2 or not code.isalpha():
+        return ""
+    return ''.join(chr(0x1F1E6 + ord(c) - ord('A')) for c in code.upper())
+
 def format_telegram_message(action, jail, ip_address, attempts, geoip_data, abuse_data, escalated=False):
     """Format the Telegram alert message with full details"""
 
@@ -193,7 +200,8 @@ def format_telegram_message(action, jail, ip_address, attempts, geoip_data, abus
         # Country
         country_code = geoip_data.get('country', 'N/A')
         if country_code and country_code != 'N/A':
-            message += f"<b>Country:</b> {country_code}\n"
+            flag = country_flag(country_code)
+            message += f"<b>Country:</b> {flag + ' ' if flag else ''}{country_code}\n"
         
         # Region
         region = geoip_data.get('region', 'N/A')
