@@ -601,7 +601,7 @@ Built with:
 
 ---
 
-## 🏢 Maintained by RHC Solutions
+# RHC Solutions
 
 ```text
  ____  _   _  ____    ____        _       _   _
@@ -611,7 +611,7 @@ Built with:
 |_| \_\_| |_|\____|  |____/ \___/|_|\__,_|\__|_|\___/|_| |_|___/
 ```
 
-🌐 Website: [rhcsolutions.com](https://rhcsolutions.com) · 💬 Telegram: [t.me/rhcsolutions](https://t.me/rhcsolutions)
+**Website:** [rhcsolutions.com](https://rhcsolutions.com) &nbsp;·&nbsp; **Telegram:** [t.me/rhcsolutions](https://t.me/rhcsolutions)
 
 ---
 
