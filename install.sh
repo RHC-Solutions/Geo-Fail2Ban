@@ -258,6 +258,7 @@ if [ -n "${WL_IPS:-}" ]; then
     case "${_apply:-}" in
         [Yy]*)
             fw_apply_whitelist $WL_IPS
+            WL_APPLIED=1
             print_success "Whitelist applied (your current SSH IP was auto-included)."
             ;;
         *)  print_info "Skipped. Apply later with: sudo bash scripts/setup-firewall.sh" ;;
@@ -303,13 +304,50 @@ iptables -C INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null
     || { print_error "Blacklist DROP rule missing"; FAIL=1; }
 [ "$FAIL" -ne 0 ] && exit 1
 
-# Step 11: Send a Telegram test alert so you can confirm it works end-to-end.
-# Non-fatal: a delivery failure only warns (the rest of the install is fine).
-print_info "Sending a test alert to Telegram..."
-if "$INSTALL_DIR/telegram_alert.py" test >/dev/null 2>&1; then
-    print_success "Test alert sent — check your Telegram chat"
+# Step 11: Send a full install-status summary to Telegram. This doubles as the
+# end-to-end delivery test. Non-fatal: a failure only warns.
+send_install_status() {
+    [ -z "${TELEGRAM_BOT_TOKEN:-}" ] && return 1
+    local host now bl thresh geo wl gc msg
+    host="$(hostname -f 2>/dev/null || hostname)"
+    now="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+    bl="$(ipset list -t abuseipdb-blacklist 2>/dev/null | awk '/Number of entries/{print $4}')"
+    thresh="$(grep -E '^ABUSE_THRESHOLD=' "$CONF" 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"' | sed 's/#.*//' | tr -d ' ')"
+    if [ "$SKIP_GEO" -eq 0 ]; then
+        gc="$(ipset list -t geoblock 2>/dev/null | awk '/Number of entries/{print $4}')"
+        geo="enabled — ${GEOBLOCK_COUNTRIES:-?} (${gc:-0} CIDRs)"
+    else
+        geo="disabled"
+    fi
+    [ "${WL_APPLIED:-0}" -eq 1 ] && wl="applied" || wl="not applied"
+
+    msg="✅ <b>Geo-Fail2Ban installed</b>
+<b>Server:</b> ${host}
+<b>Time:</b> ${now}
+<b>Install dir:</b> ${INSTALL_DIR}
+<b>Firewall:</b> ${FW_BACKEND}
+
+<b>Protection active</b>
+• sshd jail: 24h bans + Telegram alerts
+• AbuseIPDB jail: PERMANENT ban at score ≥ ${thresh:-75}%
+• Blacklist ipset: ${bl:-0} IPs (daily import)
+• Geoblock: ${geo}
+• SSH/DNS whitelist: ${wl}
+
+All ipsets &amp; firewall rules restore on reboot."
+
+    curl -fsS --max-time 15 \
+        --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+        --data-urlencode "text=${msg}" \
+        --data-urlencode "parse_mode=HTML" \
+        "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" >/dev/null
+}
+
+print_info "Sending install status to Telegram..."
+if send_install_status; then
+    print_success "Install status sent — check your Telegram chat"
 else
-    print_error "Could not send Telegram test alert — verify TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID in $CONF"
+    print_error "Could not send Telegram status — verify TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID in $CONF"
 fi
 
 print_header "Installation Complete! 🎉"
