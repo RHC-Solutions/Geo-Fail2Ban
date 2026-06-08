@@ -255,10 +255,13 @@ fi
 print_header "7. Cron Jobs"
 
 if [ -f /etc/cron.d/fail2ban-abuseipdb ]; then
-    if grep -qE '^[0-9]+ \* \* \* \*' /etc/cron.d/fail2ban-abuseipdb; then
-        test_fail "Blacklist cron runs HOURLY - the free API allows 5/day, switch to daily!"
-    else
+    ACTIVE_CRON_LINES="$(grep -vE '^\s*#|^\s*$' /etc/cron.d/fail2ban-abuseipdb)"
+    if [ -z "$ACTIVE_CRON_LINES" ]; then
+        test_fail "Cron job file exists but has no active entries"
+    elif printf '%s\n' "$ACTIVE_CRON_LINES" | grep -qE '^[[:space:]]*([0-5]?[0-9])[[:space:]]+([01]?[0-9]|2[0-3])[[:space:]]+\*[[:space:]]+\*[[:space:]]+\*([[:space:]]|$)'; then
         test_pass "Daily blacklist import cron configured"
+    else
+        test_fail "Blacklist cron is not configured as daily at a fixed hour (free API allows max 5/day)"
     fi
     grep -v '^#' /etc/cron.d/fail2ban-abuseipdb | grep -v '^$' | sed 's/^/  /'
 else
@@ -275,9 +278,11 @@ if [ "$LIVE" -eq 1 ]; then
     if fail2ban-client status abuseipdb | grep -q "$TEST_IP"; then
         test_pass "abuseipdb jail permanently banned $TEST_IP from log append"
         fail2ban-client set abuseipdb unbanip "$TEST_IP" > /dev/null 2>&1
-        test_info "Test IP unbanned and cleaned up"
+        sed -i "\|^${TEST_IP}$|d" /var/log/abuseipdb.log
+        test_info "Test IP unbanned and log entry cleaned up"
     else
         test_fail "abuseipdb jail did NOT pick up $TEST_IP (check fail2ban backend/logs)"
+        sed -i "\|^${TEST_IP}$|d" /var/log/abuseipdb.log
     fi
 fi
 
