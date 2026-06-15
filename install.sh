@@ -257,7 +257,8 @@ if [ -n "${WL_IPS:-}" ]; then
     echo
     case "${_apply:-}" in
         [Yy]*)
-            fw_apply_whitelist $WL_IPS
+            read -r -a wl_ips_arr <<< "$WL_IPS"
+            fw_apply_whitelist "${wl_ips_arr[@]}"
             WL_APPLIED=1
             print_success "Whitelist applied (your current SSH IP was auto-included)."
             ;;
@@ -299,9 +300,26 @@ fail2ban-client status sshd > /dev/null 2>&1 \
 fail2ban-client status abuseipdb > /dev/null 2>&1 \
     && print_success "abuseipdb jail active (PERMANENT bans, score >= threshold)" \
     || { print_error "abuseipdb jail not active"; FAIL=1; }
-iptables -C INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null \
-    && print_success "Blacklist DROP rule present ($(ipset list -t abuseipdb-blacklist | awk '/Number of entries/{print $4}') IPs)" \
-    || { print_error "Blacklist DROP rule missing"; FAIL=1; }
+case "${FW_BACKEND:-iptables}" in
+    iptables)
+        iptables -C INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null \
+            && print_success "Blacklist DROP rule present ($(ipset list -t abuseipdb-blacklist | awk '/Number of entries/{print $4}') IPs)" \
+            || { print_error "Blacklist DROP rule missing"; FAIL=1; }
+        ;;
+    firewalld)
+        firewall-cmd --permanent --query-rich-rule='rule family="ipv4" source ipset="abuseipdb-blacklist" drop' >/dev/null 2>&1 \
+            && print_success "Blacklist DROP rule present ($(ipset list -t abuseipdb-blacklist | awk '/Number of entries/{print $4}') IPs)" \
+            || { print_error "Blacklist DROP rule missing"; FAIL=1; }
+        ;;
+    ufw)
+        ufw status 2>/dev/null | grep -qiE 'abuseipdb-blacklist|ipset.*abuseipdb-blacklist' \
+            && print_success "Blacklist DROP rule present ($(ipset list -t abuseipdb-blacklist | awk '/Number of entries/{print $4}') IPs)" \
+            || { print_error "Blacklist DROP rule missing"; FAIL=1; }
+        ;;
+    *)
+        print_error "Unknown firewall backend '${FW_BACKEND:-unset}'"; FAIL=1;
+        ;;
+esac
 [ "$FAIL" -ne 0 ] && exit 1
 
 # Step 11: Send a full install-status summary to Telegram. This doubles as the
