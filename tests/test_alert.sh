@@ -30,9 +30,17 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Cron format check: minute hour * * * (daily at a fixed hour/minute)
+DAILY_CRON_PATTERN='^[[:space:]]*([0-5]?[0-9])[[:space:]]+([01]?[0-9]|2[0-3])[[:space:]]+\*[[:space:]]+\*[[:space:]]+\*([[:space:]]|$)'
+
 # Test results
 PASSED=0
 FAILED=0
+
+cleanup_test_ip_from_log() {
+    local ip="$1"
+    sed -i "\|^${ip}$|d" /var/log/abuseipdb.log
+}
 
 # Helper functions
 print_header() {
@@ -258,7 +266,7 @@ if [ -f /etc/cron.d/fail2ban-abuseipdb ]; then
     ACTIVE_CRON_LINES="$(grep -vE '^\s*#|^\s*$' /etc/cron.d/fail2ban-abuseipdb)"
     if [ -z "$ACTIVE_CRON_LINES" ]; then
         test_fail "Cron job file exists but has no active entries"
-    elif printf '%s\n' "$ACTIVE_CRON_LINES" | grep -qE '^[[:space:]]*([0-5]?[0-9])[[:space:]]+([01]?[0-9]|2[0-3])[[:space:]]+\*[[:space:]]+\*[[:space:]]+\*([[:space:]]|$)'; then
+    elif printf '%s\n' "$ACTIVE_CRON_LINES" | grep -qE "$DAILY_CRON_PATTERN"; then
         test_pass "Daily blacklist import cron configured"
     else
         test_fail "Blacklist cron is not configured as daily at a fixed hour (free API allows max 5/day)"
@@ -278,11 +286,11 @@ if [ "$LIVE" -eq 1 ]; then
     if fail2ban-client status abuseipdb | grep -q "$TEST_IP"; then
         test_pass "abuseipdb jail permanently banned $TEST_IP from log append"
         fail2ban-client set abuseipdb unbanip "$TEST_IP" > /dev/null 2>&1
-        sed -i "\|^${TEST_IP}$|d" /var/log/abuseipdb.log
+        cleanup_test_ip_from_log "$TEST_IP"
         test_info "Test IP unbanned and log entry cleaned up"
     else
         test_fail "abuseipdb jail did NOT pick up $TEST_IP (check fail2ban backend/logs)"
-        sed -i "\|^${TEST_IP}$|d" /var/log/abuseipdb.log
+        cleanup_test_ip_from_log "$TEST_IP"
     fi
 fi
 
@@ -290,7 +298,11 @@ fi
 print_header "Test Summary"
 
 TOTAL=$((PASSED + FAILED))
-PERCENT=$((PASSED * 100 / (TOTAL > 0 ? TOTAL : 1)))
+if [ "$TOTAL" -eq 0 ]; then
+    PERCENT=0
+else
+    PERCENT=$((PASSED * 100 / TOTAL))
+fi
 
 echo -e "${GREEN}Passed:${NC} $PASSED/$TOTAL"
 echo -e "${RED}Failed:${NC} $FAILED/$TOTAL"
