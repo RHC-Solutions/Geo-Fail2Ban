@@ -1,3 +1,4 @@
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Refresh geoblock ipset daily (04:17 UTC). ipdeny.com regenerates its
 # aggregated zone files ~daily and the download is unmetered, so daily keeps
 # country ranges current with negligible cost.

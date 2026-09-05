@@ -1,4 +1,5 @@
 #!/bin/bash
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin  # cron.d default PATH lacks /usr/sbin (ipset)
 # Refresh geoblock ipset from ipdeny.com country zone files.
 set -euo pipefail
 

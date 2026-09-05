@@ -93,7 +93,7 @@ def get_blacklisted_ips():
 
 def ensure_ipset():
     """Create the ipset if it doesn't exist yet"""
-    result = run(['ipset', 'create', IPSET_NAME, 'hash:ip',
+    result = run(['/usr/sbin/ipset', 'create', IPSET_NAME, 'hash:ip',
                   'family', 'inet', 'hashsize', '16384', 'maxelem', '500000', '-exist'])
     if result.returncode != 0:
         log(f"Failed to create ipset: {result.stderr}")
@@ -102,16 +102,16 @@ def ensure_ipset():
 def ensure_iptables_rule():
     """Insert the DROP rule for the set at the top of INPUT if missing"""
     rule = ['-m', 'set', '--match-set', IPSET_NAME, 'src', '-j', 'DROP']
-    check = run(['iptables', '-C', 'INPUT'] + rule)
+    check = run(['/usr/sbin/iptables', '-C', 'INPUT'] + rule)
     if check.returncode != 0:
-        result = run(['iptables', '-I', 'INPUT', '1'] + rule)
+        result = run(['/usr/sbin/iptables', '-I', 'INPUT', '1'] + rule)
         if result.returncode == 0:
             log("Inserted iptables DROP rule for " + IPSET_NAME)
         else:
             log(f"Failed to insert iptables rule: {result.stderr}")
 
 def count_entries():
-    result = run(['ipset', 'list', '-t', IPSET_NAME])
+    result = run(['/usr/sbin/ipset', 'list', '-t', IPSET_NAME])
     for line in result.stdout.splitlines():
         if line.startswith('Number of entries'):
             return int(line.split(':')[1].strip())
@@ -120,7 +120,7 @@ def count_entries():
 def add_ips(ips):
     """Bulk-add IPs via 'ipset restore' (much faster than one call per IP)"""
     lines = '\n'.join(f"add {IPSET_NAME} {ip} -exist" for ip in ips) + '\n'
-    result = run(['ipset', 'restore', '-exist'], input=lines)
+    result = run(['/usr/sbin/ipset', 'restore', '-exist'], input=lines)
     if result.returncode != 0:
         log(f"ipset restore failed: {result.stderr}")
         return False
@@ -128,7 +128,7 @@ def add_ips(ips):
 
 def save_set():
     """Persist the set for restore at boot (ipset-abuseipdb.service)"""
-    result = run(['ipset', 'save', IPSET_NAME])
+    result = run(['/usr/sbin/ipset', 'save', IPSET_NAME])
     if result.returncode == 0:
         with open(SAVE_FILE, 'w') as f:
             f.write(result.stdout)
