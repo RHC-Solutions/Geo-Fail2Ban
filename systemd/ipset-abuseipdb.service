@@ -8,8 +8,10 @@ ConditionPathExists=/etc/ipset-abuseipdb.conf
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/sbin/ipset -exist restore -file /etc/ipset-abuseipdb.conf
-ExecStart=/bin/sh -c '/sbin/iptables -C INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null || /sbin/iptables -I INPUT 1 -m set --match-set abuseipdb-blacklist src -j DROP'
+# Resolved via PATH rather than hardcoded: ipset/iptables live in /usr/sbin on
+# Debian/RHEL, /sbin on Alpine and /usr/bin on Arch.
+ExecStart=/bin/sh -c 'exec ipset -exist restore -file /etc/ipset-abuseipdb.conf'
+ExecStart=/bin/sh -c 'iptables -C INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null || iptables -I INPUT 1 -m set --match-set abuseipdb-blacklist src -j DROP'
 ExecStop=/bin/true
 
 [Install]

@@ -21,6 +21,10 @@ banaction = iptables-multiport
 enabled = true
 port = ssh
 filter = sshd
+# Debian/Ubuntu default. install.sh rewrites this line to
+# 'logpath = /var/log/secure' on RHEL/Fedora/SUSE, or to 'backend = systemd'
+# on hosts that only log SSH to the journal. Adjust by hand if you install
+# manually - the jail will not start if it points at a file that isn't there.
 logpath = /var/log/auth.log
 maxretry = 5
 findtime = 3600

@@ -3,12 +3,17 @@ Description=Restore geoblock ipset from /etc/ipset-geo/ipset.conf
 DefaultDependencies=no
 Before=ufw.service firewalld.service netfilter-persistent.service network-pre.target
 Wants=network-pre.target
+# Without this the unit fails at boot on any system where the first geo refresh
+# has not produced a save file yet (fresh install, or every download failed).
+ConditionPathExists=/etc/ipset-geo/ipset.conf
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/sbin/ipset -exist restore -file /etc/ipset-geo/ipset.conf
-ExecStart=/bin/sh -c '/sbin/iptables -C INPUT -m set --match-set geoblock src -j DROP 2>/dev/null || /sbin/iptables -I INPUT 1 -m set --match-set geoblock src -j DROP'
+# Resolved via PATH rather than hardcoded: ipset/iptables live in /usr/sbin on
+# Debian/RHEL, /sbin on Alpine and /usr/bin on Arch.
+ExecStart=/bin/sh -c 'exec ipset -exist restore -file /etc/ipset-geo/ipset.conf'
+ExecStart=/bin/sh -c 'iptables -C INPUT -m set --match-set geoblock src -j DROP 2>/dev/null || iptables -I INPUT 1 -m set --match-set geoblock src -j DROP'
 ExecStop=/bin/true
 
 [Install]

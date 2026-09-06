@@ -1,0 +1,32 @@
+# Log rotation for Geo-Fail2Ban.
+# Installed to /etc/logrotate.d/geo-fail2ban by install.sh.
+
+# Cron output from the daily blacklist import and the daily country-zone sync.
+/var/log/fail2ban-abuseipdb.log
+/var/log/ipset-geo.log
+{
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root root
+}
+
+# The permanent-ban escalation channel: telegram_alert.py appends IPs here and
+# the 'abuseipdb' jail tails it. copytruncate keeps fail2ban's open file handle
+# pointing at the live file - a normal rotate would leave it writing to the
+# rotated inode, and escalations would stop reaching the jail.
+#
+# Rotating this does not release any bans: they live in fail2ban's database and
+# in the abuseipdb-blacklist ipset, not in this file.
+/var/log/abuseipdb.log {
+    size 10M
+    rotate 3
+    compress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 root root
+}

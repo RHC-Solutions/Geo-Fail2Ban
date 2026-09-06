@@ -126,6 +126,8 @@ BLACKLIST_LIMIT=10000        # Max IPs per daily blacklist import
 
 # Geoblock (ipdeny.com country codes; empty = block none)
 # Defaults: cn=China vn=Vietnam in=India bd=Bangladesh pk=Pakistan ng=Nigeria ao=Angola
+# NOTE: GEOBLOCK_AFRICA is a SECOND list applied on top of this one (55 more
+# countries by default). Set either to "" to block nothing from that list.
 GEOBLOCK_COUNTRIES="cn vn in bd pk ng ao"
 ```
 
@@ -305,29 +307,36 @@ sudo bash install.sh
 ```bash
 # 1. Install dependencies
 sudo apt-get update
-sudo apt-get install -y fail2ban python3-pip curl
+sudo apt-get install -y fail2ban ipset iptables curl python3-requests
 
-# 2. Install Python packages
-pip3 install requests
-
-# 3. Copy files
+# 2. Copy files
 sudo mkdir -p /opt/geo-fail2ban
-sudo cp scripts/* /opt/geo-fail2ban/
-sudo chmod +x /opt/geo-fail2ban/*.py
+sudo cp scripts/telegram_alert.py scripts/abuseipdb_blocker.py scripts/firewall-lib.sh /opt/geo-fail2ban/
+sudo chmod +x /opt/geo-fail2ban/*.py /opt/geo-fail2ban/firewall-lib.sh
 
-# 4. Copy configurations
-sudo cp config/jail.local /etc/fail2ban/jail.local
-sudo cp config/telegram.conf /etc/fail2ban/action.d/telegram.conf
+# 3. Copy configurations
+sudo cp fail2ban/jail.local              /etc/fail2ban/jail.local
+sudo cp fail2ban/jail.d/abuseipdb.conf   /etc/fail2ban/jail.d/abuseipdb.conf
+sudo cp fail2ban/filter.d/abuseipdb.conf /etc/fail2ban/filter.d/abuseipdb.conf
+sudo cp fail2ban/action.d/telegram.conf  /etc/fail2ban/action.d/telegram.conf
+sudo touch /var/log/abuseipdb.log
 
-# 5. Update API keys
-sudo nano config/.env
+# 4. Runtime config — this file, NOT config/.env, is what the scripts read
+sudo cp config/.env.example /etc/geo-fail2ban.conf
+sudo chmod 600 /etc/geo-fail2ban.conf
+sudo nano /etc/geo-fail2ban.conf
 
-# 6. Set up cron jobs
-sudo cp config/crontab /etc/cron.d/fail2ban-abuseipdb
+# 5. Set up cron jobs (daily — the free AbuseIPDB tier allows 5 downloads/day)
+sudo cp cron/fail2ban-abuseipdb /etc/cron.d/fail2ban-abuseipdb
+sudo cp cron/ipset-geo          /etc/cron.d/ipset-geo
 
-# 7. Restart
+# 6. Restart
 sudo systemctl restart fail2ban
 ```
+
+> The steps above cover the scripts and jails only. See
+> [docs/INSTALLATION.md](docs/INSTALLATION.md) for the full manual procedure
+> including the ipsets, firewall rules and boot-restore units.
 
 ---
 
@@ -412,7 +421,7 @@ sudo systemctl restart ssh
 |---------|-------|---------|
 | ABUSE_THRESHOLD | 75 | Min score for auto-block (0-100%) |
 | REPORT_CATEGORIES | 18,22,23 | Categories to report as |
-| BLACKLIST_LIMIT | 10000 | Max IPs to import per hour |
+| BLACKLIST_LIMIT | 10000 | Max IPs to import per daily run |
 
 ---
 
@@ -427,8 +436,8 @@ sudo tail -f /var/log/fail2ban.log
 # AbuseIPDB imports
 sudo tail -f /var/log/fail2ban-abuseipdb.log
 
-# GeoIP updates
-sudo tail -f /var/log/fail2ban-geoip.log
+# Geoblock (country zone) updates
+sudo tail -f /var/log/ipset-geo.log
 ```
 
 ---

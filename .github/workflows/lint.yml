@@ -1,0 +1,63 @@
+# Lints the shell and Python that make up this project.
+#
+# CodeQL (codeql.yml) only analyses Python, but roughly three quarters of this
+# repository is bash — installer, firewall library, geo updater, uninstaller and
+# test harness — so it was going entirely unchecked.
+name: Lint
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      # bash -n first: a parse error is unambiguous and worth failing on its own.
+      - name: Syntax check
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' f; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done < <(find . -name '*.sh' -not -path './.git/*' -print0)
+
+      - name: ShellCheck
+        run: |
+          set -euo pipefail
+          # -S warning: fail on warnings and errors, allow style/info notes.
+          # -x: follow 'source'd files (install.sh sources scripts/firewall-lib.sh).
+          find . -name '*.sh' -not -path './.git/*' -print0 \
+            | xargs -0 shellcheck -S warning -x
+
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Compile check
+        run: python -m compileall -q scripts/
+
+      - name: Install linter
+        run: pip install ruff
+
+      # E9/F63/F7/F82 are the "this is actually broken" rules: syntax errors,
+      # undefined names, invalid comparisons.
+      - name: Ruff
+        run: ruff check --select E9,F63,F7,F82 scripts/

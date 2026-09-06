@@ -60,6 +60,38 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Firewall backend abstraction. The DROP rule lives in a different place per
+# backend (firewalld keeps it as a direct rule), so probing raw iptables
+# unconditionally reported a false failure on every firewalld host.
+FW_LIB=""
+for _c in "$INSTALL_DIR/firewall-lib.sh" \
+          "$(dirname "$0")/../scripts/firewall-lib.sh" \
+          scripts/firewall-lib.sh; do
+    [ -f "$_c" ] && { FW_LIB="$_c"; break; }
+done
+if [ -n "$FW_LIB" ]; then
+    # shellcheck disable=SC1090
+    . "$FW_LIB"
+    BACKEND="$(fw_detect)"
+else
+    BACKEND="iptables"
+fi
+
+# fw_has_block_rule <ipset-name> — is inbound traffic from the set dropped?
+fw_has_block_rule() {
+    local set="$1"
+    case "$BACKEND" in
+        firewalld)
+            firewall-cmd --direct --query-rule ipv4 filter INPUT 0 \
+                -m set --match-set "$set" src -j DROP >/dev/null 2>&1
+            ;;
+        *)
+            # ufw uses iptables underneath, so the raw check covers it too.
+            iptables -C INPUT -m set --match-set "$set" src -j DROP 2>/dev/null
+            ;;
+    esac
+}
+
 print_header "Geo-Fail2Ban System Test"
 
 # ========== Section 1: System Components ==========
@@ -130,6 +162,7 @@ fi
 
 # ========== Section 3: Firewall (ipsets + rules) ==========
 print_header "3. Firewall: ipsets and DROP rules"
+test_info "Firewall backend detected: $BACKEND"
 
 if ipset list -t abuseipdb-blacklist > /dev/null 2>&1; then
     ENTRIES=$(ipset list -t abuseipdb-blacklist | awk '/Number of entries/{print $4}')
@@ -138,10 +171,10 @@ else
     test_fail "abuseipdb-blacklist ipset missing"
 fi
 
-if iptables -C INPUT -m set --match-set abuseipdb-blacklist src -j DROP 2>/dev/null; then
-    test_pass "Blacklist DROP rule present in INPUT"
+if fw_has_block_rule abuseipdb-blacklist; then
+    test_pass "Blacklist DROP rule present ($BACKEND)"
 else
-    test_fail "Blacklist DROP rule missing from INPUT"
+    test_fail "Blacklist DROP rule missing ($BACKEND)"
 fi
 
 if systemctl is-enabled --quiet ipset-abuseipdb.service 2>/dev/null; then
@@ -154,8 +187,8 @@ fi
 if ipset list -t geoblock > /dev/null 2>&1; then
     GENTRIES=$(ipset list -t geoblock | awk '/Number of entries/{print $4}')
     test_pass "geoblock ipset exists ($GENTRIES CIDRs)"
-    if iptables -C INPUT -m set --match-set geoblock src -j DROP 2>/dev/null; then
-        test_pass "Geoblock DROP rule present in INPUT"
+    if fw_has_block_rule geoblock; then
+        test_pass "Geoblock DROP rule present ($BACKEND)"
     else
         test_fail "geoblock ipset is populated but its DROP rule is MISSING - blocking nothing"
     fi

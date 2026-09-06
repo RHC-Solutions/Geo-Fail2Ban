@@ -2,13 +2,26 @@
 
 ## Overview
 
-Geo-Fail2Ban is configured through three main files:
+Geo-Fail2Ban is configured through four files:
 
-1. **`config/.env`** - API credentials and settings
-2. **`/etc/fail2ban/jail.local`** - Fail2Ban rules
-3. **`/etc/fail2ban/action.d/telegram.conf`** - Alert action handler
+| File | Purpose |
+|------|---------|
+| **`/etc/geo-fail2ban.conf`** | API credentials and settings — **the file the scripts read at runtime** |
+| **`/etc/fail2ban/jail.local`** | The `sshd` jail: ban time, retries, log source |
+| **`/etc/fail2ban/jail.d/abuseipdb.conf`** | The permanent-ban jail (`bantime = -1`) |
+| **`/etc/fail2ban/action.d/telegram.conf`** | Alert action handler |
 
-## Configuration File: config/.env
+> `config/.env` is **only** a template that pre-fills the installer's prompts.
+> Editing it on an installed system changes nothing. Edit
+> `/etc/geo-fail2ban.conf` instead, then `sudo systemctl restart fail2ban`.
+
+---
+
+## Configuration File: /etc/geo-fail2ban.conf
+
+Plain `KEY=value` lines, mode 0600. Values may be quoted; a `#` after an
+unquoted value starts a comment. **These are all the keys the code reads** —
+anything else in the file is ignored.
 
 ### API Credentials
 
@@ -17,96 +30,58 @@ Geo-Fail2Ban is configured through three main files:
 TELEGRAM_BOT_TOKEN="your_bot_token"
 TELEGRAM_CHAT_ID="your_chat_id"
 
-# GeoIP Configuration
+# GeoIP Configuration (ipinfo.io)
 IPINFO_API_TOKEN="your_ipinfo_token"
 
-# IP Reputation Configuration
+# IP Reputation Configuration (AbuseIPDB)
 ABUSEIPDB_API_KEY="your_abuseipdb_key"
 ```
 
 See [API_SETUP.md](API_SETUP.md) for obtaining these.
 
-### Server Configuration
-
-```bash
-# Server hostname (used in alerts)
-SERVER_NAME="my-server"
-
-# Location description (used in alerts)
-SERVER_LOCATION="Datacenter Name or City"
-```
-
-### Fail2Ban Settings
-
-```bash
-# Ban duration (seconds)
-# Default: 86400 (24 hours)
-# Examples:
-#   3600 = 1 hour
-#   86400 = 24 hours
-#   604800 = 1 week
-BAN_TIME=86400
-
-# Failed attempts before ban
-# Default: 5
-# Range: 3-10 (recommended)
-MAX_RETRIES=5
-
-# Detection window (seconds)
-# Default: 3600 (1 hour)
-# Examples:
-#   600 = 10 minutes
-#   3600 = 1 hour
-#   7200 = 2 hours
-FIND_TIME=3600
-```
-
 ### AbuseIPDB Settings
 
 ```bash
-# Minimum abuse score for auto-block (0-100%)
-# Default: 75
-# Higher = stricter filtering
-# Lower = catch more potential attackers
+# Confidence score (0-100) that triggers a PERMANENT ban, and the minimum
+# score used when importing the daily blacklist.
+# Higher = stricter. Read by both telegram_alert.py and abuseipdb_blocker.py.
 ABUSE_THRESHOLD=75
 
-# Report categories to import
+# Categories reported back to AbuseIPDB when an IP is banned.
 # 18 = SSH Exploit, 22 = Malware, 23 = Spam Bot
 # See: https://www.abuseipdb.com/categories
 REPORT_CATEGORIES="18,22,23"
 
-# Max IPs to import per hour
-# Default: 10000
-# Depends on API rate limits
+# Max IPs fetched per DAILY blacklist import (not per hour — the free tier
+# allows only 5 blacklist downloads per day).
 BLACKLIST_LIMIT=10000
 ```
 
-### Logging Configuration
+### Geoblock Settings
 
 ```bash
-# Log level
-# Options: DEBUG, INFO, WARNING, ERROR
-LOG_LEVEL="INFO"
+# Countries dropped entirely at the firewall (ipdeny.com country codes).
+GEOBLOCK_COUNTRIES="cn vn in bd pk ng ao"
 
-# Log directory
-LOG_DIR="/var/log/fail2ban-geo"
+# A SECOND list, applied ON TOP of GEOBLOCK_COUNTRIES. With both defaults
+# that is 60 countries blocked, not 7.
+GEOBLOCK_AFRICA="dz ao bj bw bf bi cv cm cf td km cg cd ci dj eg gq er sz et ga gm gh gn gw ke ls lr ly mg mw ml mr mu ma mz na ne ng rw st sn sc sl so za ss sd tz tg tn ug eh zm zw"
 ```
 
-### Advanced Features
+Set either key to `""` to block nothing from that list. Removing a country code
+also removes it from the ipset on the next run — the stale zone file is pruned.
+Apply a change immediately instead of waiting for the daily cron:
 
 ```bash
-# Enable detailed GeoIP information
-ENABLE_IPINFO_DETAILS=true
-
-# Detect Tor exit nodes
-ENABLE_TOR_DETECTION=true
-
-# Detect VPN usage (requires additional API)
-ENABLE_VPN_DETECTION=false
-
-# Include WHOIS data
-WHOIS_LOOKUP=true
+sudo /opt/geo-fail2ban/ipset-geo/update.sh
 ```
+
+### Settings that do NOT live here
+
+Ban duration, retry count and the detection window are **fail2ban** settings,
+not keys in this file. Change them in `/etc/fail2ban/jail.local` (see below).
+There is no `BAN_TIME`, `MAX_RETRIES`, `FIND_TIME`, `SERVER_NAME`, `LOG_LEVEL`
+or `LOG_DIR` key — setting one has no effect.
 
 ---
 
@@ -116,118 +91,131 @@ WHOIS_LOOKUP=true
 
 ```ini
 [sshd]
-# Enable the jail
 enabled = true
+port = ssh
+filter = sshd
 
-# Monitor SSH logs
+# Debian/Ubuntu. install.sh rewrites this to 'logpath = /var/log/secure' on
+# RHEL/Fedora/SUSE, or to 'backend = systemd' where SSH logs only to the
+# journal. A logpath pointing at a missing file stops the jail starting.
 logpath = /var/log/auth.log
 
-# Action on ban
-action = telegram[name=%(jail)s]
-
-# Max attempts before ban
+# Failed attempts before a ban
 maxretry = 5
 
-# Time window for attempts (seconds)
+# Detection window, seconds (3600 = 1 hour)
 findtime = 3600
 
-# Ban duration (seconds)
+# Ban duration, seconds (86400 = 24 hours)
 bantime = 86400
+
+action = %(action_)s
+         telegram
 ```
+
+After editing: `sudo systemctl restart fail2ban`.
+
+### Permanent-Ban Jail — /etc/fail2ban/jail.d/abuseipdb.conf
+
+`telegram_alert.py` appends any banned IP scoring at or above
+`ABUSE_THRESHOLD` to `/var/log/abuseipdb.log`. This jail tails that file and
+bans on the first line seen, forever:
+
+```ini
+[abuseipdb]
+enabled = true
+filter = abuseipdb
+logpath = /var/log/abuseipdb.log
+maxretry = 1
+bantime = -1
+findtime = 1w
+action = %(action_)s
+         telegram
+```
+
+> Use `%(action_)s`, not `%(action_mw)s`: the latter adds a sendmail-whois
+> action, so every permanent ban would try to mail root through an MTA the host
+> may not have.
 
 ### Custom Jails
 
-You can add additional jails for other services:
+Additional services can reuse the same Telegram action:
 
 ```ini
-[apache-auth]
-enabled = true
-port = http,https
-logpath = /var/log/apache2/error.log
-maxretry = 5
-action = telegram[name=%(jail)s]
-
 [nginx-http-auth]
 enabled = true
 port = http,https
 logpath = /var/log/nginx/error.log
 maxretry = 5
-action = telegram[name=%(jail)s]
+action = %(action_)s
+         telegram
 ```
 
 ---
 
 ## Configuration File: /etc/fail2ban/action.d/telegram.conf
 
-### Telegram Action Handler
+The action passes four positional arguments to `telegram_alert.py`:
+`<action> <jail> <ip> <failures>`.
 
 ```ini
 [Definition]
-# Action name
-actionname = Telegram Alert
+# No alert on jail start/stop: those carry no real IP, and alerting on them
+# meant a Telegram message per jail on every fail2ban restart.
+actionstart =
+actionstop  =
+actioncheck =
 
-# Command when IP is banned
-actionban = /opt/geo-fail2ban/telegram_alert.py <ip> <name> ban
+actionban   = /opt/geo-fail2ban/telegram_alert.py "Banned"   "<name>" "<ip>" "<failures>"
+actionunban = /opt/geo-fail2ban/telegram_alert.py "Unbanned" "<name>" "<ip>" "<failures>"
 
-# Command when IP is unbanned
-actionunban = /opt/geo-fail2ban/telegram_alert.py <ip> <name> unban
-
-# Default values
-default_user_agent = Fail2Ban
+[Init]
 ```
+
+Only `Banned` and `Unbanned` produce an alert; any other action word is ignored.
 
 ---
 
 ## Performance Tuning
 
+These are fail2ban settings in `jail.local`, plus `ABUSE_THRESHOLD` in
+`/etc/geo-fail2ban.conf`.
+
 ### For High-Traffic Servers
 
+```ini
+findtime = 7200     # 2 hours — fewer false positives
+maxretry = 10
+```
 ```bash
-# Increase time window to reduce false positives
-FIND_TIME=7200  # 2 hours
-
-# Increase attempts threshold
-MAX_RETRIES=10
-
-# More selective abuse threshold
-ABUSE_THRESHOLD=85
+ABUSE_THRESHOLD=85  # more selective
 ```
 
 ### For Security-Focused Servers
 
+```ini
+findtime = 600      # 10 minutes — aggressive
+maxretry = 3
+bantime  = 604800   # 1 week
+```
 ```bash
-# Short detection window (aggressive)
-FIND_TIME=600  # 10 minutes
-
-# Lower attempt threshold
-MAX_RETRIES=3
-
-# Lower abuse threshold (catch more threats)
-ABUSE_THRESHOLD=50
-
-# Longer ban time
-BAN_TIME=604800  # 1 week
+ABUSE_THRESHOLD=50  # catch more threats
 ```
 
 ### For Development Servers
 
+```ini
+findtime = 14400
+maxretry = 20
+bantime  = 300      # 5 minutes
+```
 ```bash
-# Longer time window
-FIND_TIME=14400  # 4 hours
-
-# Higher attempt threshold
-MAX_RETRIES=20
-
-# Disable AbuseIPDB blocking
-ABUSE_THRESHOLD=100  # Effectively disabled
-
-# Shorter ban time
-BAN_TIME=300  # 5 minutes
+ABUSE_THRESHOLD=100 # effectively disables permanent-ban escalation
 ```
 
 ---
 
-## Monitoring Configuration
+## Monitoring
 
 ### View Logs
 
@@ -235,33 +223,41 @@ BAN_TIME=300  # 5 minutes
 # Fail2Ban main log
 sudo tail -f /var/log/fail2ban.log
 
-# Geo-Fail2Ban specific logs
-sudo tail -f /var/log/fail2ban-geo/*
-
-# AbuseIPDB blocker log
+# Daily AbuseIPDB blacklist import
 sudo tail -f /var/log/fail2ban-abuseipdb.log
+
+# Daily country-zone sync
+sudo tail -f /var/log/ipset-geo.log
+
+# Permanent-ban escalation channel (IPs fed to the abuseipdb jail)
+sudo tail -f /var/log/abuseipdb.log
 ```
+
+All four are rotated by `/etc/logrotate.d/geo-fail2ban`.
 
 ### Check Active Jails
 
 ```bash
-# List all jails
 sudo fail2ban-client status
-
-# Check specific jail
 sudo fail2ban-client status sshd
+sudo fail2ban-client status abuseipdb
 
-# View current bans
+# Unban an IP
 sudo fail2ban-client set sshd unbanip <ip>
+```
+
+Note that unbanning in fail2ban does **not** remove an IP from the
+`abuseipdb-blacklist` ipset, which is add-only:
+
+```bash
+sudo ipset del abuseipdb-blacklist <ip>
+sudo ipset save abuseipdb-blacklist > /etc/ipset-abuseipdb.conf
 ```
 
 ### Real-Time Monitoring
 
 ```bash
-# Monitor bans in real-time
 watch -n 1 'sudo fail2ban-client status sshd | grep "Currently banned"'
-
-# Monitor logs with colors
 sudo tail -f /var/log/fail2ban.log | grep --color=always "Ban\|Unban"
 ```
 
@@ -281,12 +277,8 @@ sudo nano config/whitelist.txt
 sudo bash scripts/setup-firewall.sh
 ```
 
-### UFW Configuration
-
-```bash
-# View current rules
-sudo ufw status numbered
-```
+The IP of your current SSH session is always added automatically, so this
+cannot lock you out of the session you run it from.
 
 ### Example Whitelist
 
@@ -303,20 +295,17 @@ sudo ufw status numbered
 203.0.113.31
 ```
 
-### Manual UFW Configuration
+### Inspecting the result
 
 ```bash
-# Allow SSH from specific IP
-sudo ufw allow from 203.0.113.10 to any port 22 proto tcp
+# ufw
+sudo ufw status numbered
 
-# Deny SSH from everywhere else
-sudo ufw deny 22
+# firewalld
+sudo firewall-cmd --list-rich-rules
 
-# Allow DNS from specific IP
-sudo ufw allow from 203.0.113.10 to any port 53
-
-# Reload rules
-sudo ufw reload
+# iptables
+sudo iptables -S INPUT
 ```
 
 ---
@@ -325,48 +314,48 @@ sudo ufw reload
 
 ### Issue: Telegram alerts not sending
 
-1. Verify `.env` credentials:
+1. Verify the runtime credentials:
    ```bash
-   sudo grep -E "TELEGRAM|IPINFO|ABUSEIPDB" config/.env
+   sudo grep -E "TELEGRAM|IPINFO|ABUSEIPDB" /etc/geo-fail2ban.conf
    ```
 
-2. Test Telegram API:
+2. Send a test alert through the installed script:
    ```bash
-   python3 -c "
-   import requests
-   import os
-   token = 'YOUR_TOKEN'
-   chat_id = 'YOUR_CHAT_ID'
-   url = f'https://api.telegram.org/bot{token}/sendMessage'
-   requests.post(url, json={'chat_id': chat_id, 'text': 'Test'})
-   "
+   sudo python3 /opt/geo-fail2ban/telegram_alert.py test
+   ```
+
+3. Or run the full health check:
+   ```bash
+   sudo bash tests/test_alert.sh
    ```
 
 ### Issue: Bans not working
 
-1. Check jail is enabled:
+1. Check the jail is running:
    ```bash
    sudo fail2ban-client status sshd
    ```
 
-2. Verify logpath exists:
+2. Verify the jail is watching a log source that exists:
    ```bash
-   sudo test -f /var/log/auth.log && echo "Log file exists"
+   sudo grep -E '^(logpath|backend)' /etc/fail2ban/jail.local
+   sudo test -f /var/log/auth.log && echo "auth.log exists"
+   sudo test -f /var/log/secure  && echo "secure exists"
    ```
 
-3. Check permissions:
+3. Test the filter against real log lines:
    ```bash
-   sudo ls -l /var/log/auth.log
+   sudo fail2ban-regex /var/log/auth.log /etc/fail2ban/filter.d/sshd.conf
    ```
 
 ### Issue: AbuseIPDB import failing
 
-1. Verify API key:
+1. Verify the API key:
    ```bash
-   grep ABUSEIPDB config/.env
+   sudo grep ABUSEIPDB /etc/geo-fail2ban.conf
    ```
 
-2. Check rate limits:
+2. Check rate limits — the free tier allows 5 blacklist downloads per day:
    ```bash
    sudo tail -50 /var/log/fail2ban-abuseipdb.log | grep -i "error\|rate\|429"
    ```
@@ -382,4 +371,3 @@ sudo ufw reload
 5. **Test before deploying** - Use `test_alert.sh` after changes
 6. **Backup configurations** - Keep copies of working configs
 7. **Review whitelist quarterly** - Remove unused IPs
-

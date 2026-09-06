@@ -89,7 +89,8 @@ print_success "Scripts removed ($INSTALL_DIR)"
 print_warning "Removing cron jobs..."
 rm -f /etc/cron.d/fail2ban-abuseipdb
 rm -f /etc/cron.d/ipset-geo
-print_success "Cron jobs removed"
+rm -f /etc/logrotate.d/geo-fail2ban
+print_success "Cron jobs and logrotate config removed"
 
 print_warning "Removing ipsets, firewall rules and persistence units..."
 systemctl disable --now ipset-abuseipdb.service ipset-geo.service 2>/dev/null || true

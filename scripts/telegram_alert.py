@@ -6,13 +6,43 @@ Fail2Ban Telegram Alert Script with GeoIP and AbuseIPDB Integration
 import sys
 import requests
 import socket
+import html
 import os
+import shutil
 import subprocess
 from datetime import datetime
+
+def _bin(name):
+    """Locate a system binary. ipset/iptables live in /usr/sbin on Debian and
+    RHEL, /sbin on Alpine and /usr/bin on Arch, and fail2ban's PATH does not
+    always include the sbin directories - so search explicitly."""
+    found = shutil.which(name)
+    if found:
+        return found
+    for d in ('/usr/sbin', '/sbin', '/usr/bin', '/bin', '/usr/local/sbin'):
+        cand = os.path.join(d, name)
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return name
+
+IPSET = _bin('ipset')
+IPTABLES = _bin('iptables')
 
 # Configuration is read from /etc/geo-fail2ban.conf (KEY=value lines).
 # Secrets live there - never hardcode them here (this file is in git).
 CONFIG_FILE = "/etc/geo-fail2ban.conf"
+
+def esc(value):
+    """Escape a value for Telegram's parse_mode=HTML.
+
+    Everything interpolated into an alert - the hostname, the jail name and
+    especially the org/isp/domain strings coming back from ipinfo.io and
+    AbuseIPDB - is third-party text. Telegram only accepts a small tag
+    whitelist and rejects the whole message with HTTP 400 on a stray '&' or
+    '<' (e.g. an ASN owned by 'AT&T Services, Inc.'), which would silently
+    drop the ban notification.
+    """
+    return html.escape(str(value), quote=False)
 
 def country_flag(country_code):
     """Convert a 2-letter ISO country code into its flag emoji (e.g. PT -> 🇵🇹)."""
@@ -126,7 +156,7 @@ def is_permanently_banned(ip_address):
     fail2ban-client from inside an action can deadlock."""
     try:
         result = subprocess.run(
-            ['iptables', '-C', f'f2b-{PERMANENT_JAIL}', '-s', ip_address,
+            [IPTABLES, '-C', f'f2b-{PERMANENT_JAIL}', '-s', ip_address,
              '-j', 'REJECT', '--reject-with', 'icmp-port-unreachable'],
             capture_output=True, timeout=5
         )
@@ -136,7 +166,7 @@ def is_permanently_banned(ip_address):
         pass
     try:
         result = subprocess.run(
-            ['ipset', 'test', IPSET_BLACKLIST, ip_address],
+            [IPSET, 'test', IPSET_BLACKLIST, ip_address],
             capture_output=True, timeout=5
         )
         return result.returncode == 0
@@ -164,10 +194,10 @@ def format_telegram_message(action, jail, ip_address, attempts, geoip_data, abus
     banned = action.lower() == "banned"
     header_emoji = "🚫" if banned else "✅"
     message = f"{header_emoji} <b>Fail2Ban Alert — {'BANNED' if banned else 'UNBANNED'}</b>\n"
-    message += f"<b>Server:</b> {server_name}\n"
-    message += f"<b>Jail:</b> {jail}\n"
-    message += f"<b>Host:</b> {ip_address}\n"
-    message += f"<b>Attempts:</b> {attempts}"
+    message += f"<b>Server:</b> {esc(server_name)}\n"
+    message += f"<b>Jail:</b> {esc(jail)}\n"
+    message += f"<b>Host:</b> {esc(ip_address)}\n"
+    message += f"<b>Attempts:</b> {esc(attempts)}"
 
     # Explain what Attempts means
     if attempts == "0":
@@ -199,27 +229,27 @@ def format_telegram_message(action, jail, ip_address, attempts, geoip_data, abus
         country_code = geoip_data.get('country', 'N/A')
         if country_code and country_code != 'N/A':
             flag = country_flag(country_code)
-            message += f"<b>Country:</b> {flag + ' ' if flag else ''}{country_code}\n"
+            message += f"<b>Country:</b> {flag + ' ' if flag else ''}{esc(country_code)}\n"
         
         # Region
         region = geoip_data.get('region', 'N/A')
         if region and region != 'N/A':
-            message += f"<b>Region:</b> {region}\n"
+            message += f"<b>Region:</b> {esc(region)}\n"
         
         # City
         city = geoip_data.get('city', 'N/A')
         if city and city != 'N/A':
-            message += f"<b>City:</b> {city}\n"
+            message += f"<b>City:</b> {esc(city)}\n"
         
         # Timezone
         timezone = geoip_data.get('timezone', 'N/A')
         if timezone and timezone != 'N/A':
-            message += f"<b>Timezone:</b> {timezone}\n"
+            message += f"<b>Timezone:</b> {esc(timezone)}\n"
         
         # ASN/Org
         org = geoip_data.get('org', 'N/A')
         if org and org != 'N/A':
-            message += f"<b>ASN/Org:</b> {org}\n"
+            message += f"<b>ASN/Org:</b> {esc(org)}\n"
     
     # Abuse Information
     if abuse_data:
@@ -248,16 +278,16 @@ def format_telegram_message(action, jail, ip_address, attempts, geoip_data, abus
         # ISP and Domain
         isp = abuse_data.get('isp', '')
         if isp:
-            message += f"<b>ISP:</b> {isp}\n"
+            message += f"<b>ISP:</b> {esc(isp)}\n"
         
         domain = abuse_data.get('domain', '')
         if domain:
-            message += f"<b>Domain:</b> {domain}\n"
+            message += f"<b>Domain:</b> {esc(domain)}\n"
         
         # Usage Type
         usage = abuse_data.get('usageType', '')
         if usage:
-            message += f"<b>Usage Type:</b> {usage}\n"
+            message += f"<b>Usage Type:</b> {esc(usage)}\n"
         
         # Is Tor?
         is_tor = abuse_data.get('isTor', False)
@@ -272,7 +302,7 @@ def format_telegram_message(action, jail, ip_address, attempts, geoip_data, abus
         # Last reported
         last_report = abuse_data.get('lastReportedAt', '')
         if last_report:
-            message += f"<b>Last Reported:</b> {last_report}\n"
+            message += f"<b>Last Reported:</b> {esc(last_report)}\n"
     
     return message
 
@@ -343,12 +373,22 @@ def main():
         server_name = get_hostname()
         test_msg = (
             "✅ <b>Geo-Fail2Ban — Test Alert</b>\n"
-            f"<b>Server:</b> {server_name}\n"
+            f"<b>Server:</b> {esc(server_name)}\n"
             f"<b>Time:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
             "Installation complete — Telegram alerts are working. 🎉"
         )
         sys.exit(0 if send_telegram_alert(test_msg) else 1)
-    
+
+    # Only ban/unban events produce an alert. Fail2ban also invokes actions on
+    # jail start/stop; those carry no real IP (0.0.0.0) and previously fell
+    # through to the unban branch, so every 'systemctl restart fail2ban' sent
+    # one bogus "UNBANNED 0.0.0.0" message per jail and burned an ipinfo.io +
+    # AbuseIPDB lookup on it. telegram.conf no longer wires those up, but stay
+    # defensive so a stale action file can't resurrect the behaviour.
+    if action.lower() not in ("banned", "unbanned"):
+        print(f"Ignoring non-ban action '{action}' for jail '{jail}'", file=sys.stderr)
+        return
+
     print(f"Processing alert: {action} - {jail} - {ip_address} - attempts: {attempts}", file=sys.stderr)
     
     # Get GeoIP and abuse info

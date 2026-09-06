@@ -39,6 +39,7 @@ print_header() {
 print_success() { echo -e "${GREEN}✓ $1${NC}"; }
 print_error()   { echo -e "${RED}✗ $1${NC}"; }
 print_info()    { echo -e "${YELLOW}ℹ $1${NC}"; }
+print_warning() { echo -e "${YELLOW}⚠ $1${NC}"; }
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
@@ -108,8 +109,24 @@ fi
 # from the template so a fresh install shows it; on update the existing value
 # (sourced from $CONF above) is shown and kept unless you type a new one.
 if [ "$SKIP_GEO" -eq 0 ]; then
-    : "${GEOBLOCK_COUNTRIES:=$(grep -E '^GEOBLOCK_COUNTRIES=' config/.env.example | head -1 | cut -d'"' -f2)}"
+    # '=' not ':=' — an existing empty value means "block none" and must survive.
+    : "${GEOBLOCK_COUNTRIES=$(grep -E '^GEOBLOCK_COUNTRIES=' config/.env.example | head -1 | cut -d'"' -f2)}"
     ask GEOBLOCK_COUNTRIES "Countries to geoblock (space-separated ipdeny codes)"
+
+    # GEOBLOCK_AFRICA is a second list applied ON TOP of the one above. It used
+    # to be applied silently, so ask about it explicitly.
+    _afr_all="$(grep -E '^GEOBLOCK_AFRICA=' config/.env.example | head -1 | cut -d'"' -f2)"
+    if [ -n "${GEOBLOCK_AFRICA-x}" ]; then
+        _afr_def="Y" _afr_hint="Y/n"      # unset (fresh) or non-empty -> currently on
+    else
+        _afr_def="N" _afr_hint="y/N"      # explicitly empty -> currently off
+    fi
+    read -t "$PROMPT_TIMEOUT" -r -p "  Also geoblock the whole of Africa ($(echo $_afr_all | wc -w) countries, added on top)? (${_afr_hint}, ${PROMPT_TIMEOUT}s): " _afr || true
+    echo
+    case "${_afr:-$_afr_def}" in
+        [Nn]*) GEOBLOCK_AFRICA="" ;;
+        *)     GEOBLOCK_AFRICA="${GEOBLOCK_AFRICA:-$_afr_all}" ;;
+    esac
 fi
 
 # Seed the config from an existing file or the template, then write the answers.
@@ -129,9 +146,14 @@ set_conf TELEGRAM_BOT_TOKEN "${TELEGRAM_BOT_TOKEN:-}"
 set_conf TELEGRAM_CHAT_ID   "${TELEGRAM_CHAT_ID:-}"
 set_conf IPINFO_API_TOKEN   "${IPINFO_API_TOKEN:-}"
 set_conf ABUSEIPDB_API_KEY  "${ABUSEIPDB_API_KEY:-}"
-# Only write the country list when we actually have one, so skipping the prompt
-# keeps whatever is already in $CONF (or the template default) rather than blanking it.
-[ -n "${GEOBLOCK_COUNTRIES:-}" ] && set_conf GEOBLOCK_COUNTRIES "${GEOBLOCK_COUNTRIES}"
+# Write both geoblock lists only when geoblock was actually configured this run.
+# They are written even when empty — "" is a meaningful answer meaning "block
+# nothing from this list". With --skip-geo the prompts never ran, so leave
+# whatever is already in $CONF alone.
+if [ "$SKIP_GEO" -eq 0 ]; then
+    set_conf GEOBLOCK_COUNTRIES "${GEOBLOCK_COUNTRIES-}"
+    set_conf GEOBLOCK_AFRICA    "${GEOBLOCK_AFRICA-}"
+fi
 chmod 600 "$CONF"
 print_success "Configuration written to $CONF"
 
@@ -195,6 +217,29 @@ python3 -c 'import requests' 2>/dev/null \
     || pip3 install requests >/dev/null 2>&1 || true
 print_success "Dependencies installed"
 
+# Best-effort install of the first candidate package name that exists on this
+# distro. Used for optional extras where the package is named differently
+# everywhere and a failure is not fatal.
+pkg_install_quiet() {
+    local p
+    for p in "$@"; do
+        if command -v apt-get >/dev/null 2>&1; then
+            DEBIAN_FRONTEND=noninteractive apt-get install -y "$p" >/dev/null 2>&1 && return 0
+        elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y "$p" >/dev/null 2>&1 && return 0
+        elif command -v yum >/dev/null 2>&1; then
+            yum install -y "$p" >/dev/null 2>&1 && return 0
+        elif command -v zypper >/dev/null 2>&1; then
+            zypper --non-interactive install "$p" >/dev/null 2>&1 && return 0
+        elif command -v pacman >/dev/null 2>&1; then
+            pacman -S --noconfirm "$p" >/dev/null 2>&1 && return 0
+        elif command -v apk >/dev/null 2>&1; then
+            apk add --no-cache "$p" >/dev/null 2>&1 && return 0
+        fi
+    done
+    return 1
+}
+
 # Detect the firewall backend now that iptables/ufw/firewalld are present
 FW_BACKEND="$(fw_detect)"
 print_info "Firewall backend: $FW_BACKEND"
@@ -220,6 +265,25 @@ cp fail2ban/filter.d/abuseipdb.conf /etc/fail2ban/filter.d/abuseipdb.conf
 cp fail2ban/action.d/telegram.conf /etc/fail2ban/action.d/telegram.conf
 sed -i "s#/opt/geo-fail2ban#$INSTALL_DIR#g" /etc/fail2ban/action.d/telegram.conf
 touch /var/log/abuseipdb.log
+
+# Point the sshd jail at whatever this host actually logs SSH to. The shipped
+# jail.local assumes Debian/Ubuntu's /var/log/auth.log; RHEL/Fedora/SUSE use
+# /var/log/secure, and several modern distros log only to the journal. Getting
+# this wrong means the sshd jail never starts at all.
+if [ -f /var/log/auth.log ]; then
+    print_info "sshd log source: /var/log/auth.log"
+elif [ -f /var/log/secure ]; then
+    sed -i 's#^logpath = /var/log/auth.log#logpath = /var/log/secure#' /etc/fail2ban/jail.local
+    print_info "sshd log source: /var/log/secure"
+else
+    sed -i 's#^logpath = /var/log/auth.log#backend = systemd#' /etc/fail2ban/jail.local
+    print_info "sshd log source: systemd journal (backend = systemd)"
+    # fail2ban's systemd backend needs the python journal bindings.
+    if ! python3 -c 'import systemd.journal' 2>/dev/null; then
+        pkg_install_quiet python3-systemd systemd-python python-systemd py3-systemd \
+            || print_warning "python systemd bindings not found — the sshd jail may fail to start"
+    fi
+fi
 print_success "Fail2ban jails installed (sshd 24h + abuseipdb permanent)"
 
 # Step 5: AbuseIPDB blacklist ipset (permanent, add-only)
@@ -273,8 +337,16 @@ systemctl enable ipset-abuseipdb.service > /dev/null 2>&1
 [ "$SKIP_GEO" -eq 0 ] && systemctl enable ipset-geo.service > /dev/null 2>&1
 cp cron/fail2ban-abuseipdb /etc/cron.d/fail2ban-abuseipdb
 sed -i "s#/opt/geo-fail2ban#$INSTALL_DIR#g" /etc/cron.d/fail2ban-abuseipdb
-chmod 644 /etc/cron.d/*
-print_success "Boot restore services enabled, daily blacklist cron installed"
+# Only our own files — a bare /etc/cron.d/* glob would relax the permissions of
+# unrelated packages' cron files, some of which are deliberately restricted.
+chmod 644 /etc/cron.d/fail2ban-abuseipdb
+[ -f /etc/cron.d/ipset-geo ] && chmod 644 /etc/cron.d/ipset-geo
+# Keep the three log files this tool writes from growing without bound.
+if [ -d /etc/logrotate.d ]; then
+    cp logrotate/geo-fail2ban /etc/logrotate.d/geo-fail2ban
+    chmod 644 /etc/logrotate.d/geo-fail2ban
+fi
+print_success "Boot restore services enabled, daily cron + logrotate installed"
 
 # Step 8: First blacklist fetch (best effort - free API allows 5/day)
 print_info "Fetching AbuseIPDB blacklist (may hit daily rate limit)..."

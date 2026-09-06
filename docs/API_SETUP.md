@@ -151,7 +151,7 @@ Expected response includes `abuseConfidenceScore` and report details.
 Once all APIs are configured:
 
 ```bash
-sudo nano config/.env
+sudo nano /etc/geo-fail2ban.conf
 ```
 
 Fill in all values:
@@ -161,14 +161,14 @@ TELEGRAM_BOT_TOKEN="123456789:AAExampleExampleExampleExampleXYZ"
 TELEGRAM_CHAT_ID="-1001234567890"
 IPINFO_API_TOKEN="abc123def456"
 ABUSEIPDB_API_KEY="0000000000000000000000000000000000000000000000000000000000000000000000000000aaaa"
-SERVER_NAME="my-server"
-SERVER_LOCATION="Datacenter"
-BAN_TIME=86400
-MAX_RETRIES=5
-FIND_TIME=3600
 ABUSE_THRESHOLD=75
 REPORT_CATEGORIES="18,22,23"
+BLACKLIST_LIMIT=10000
 ```
+
+> Ban duration, retry count and the detection window are fail2ban settings in
+> `/etc/fail2ban/jail.local` (`bantime`, `maxretry`, `findtime`) — not keys in
+> this file. See [CONFIGURATION.md](CONFIGURATION.md).
 
 ---
 

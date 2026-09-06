@@ -27,13 +27,16 @@ sudo apt-get update
 sudo apt-get install -y fail2ban
 ```
 
-#### Issue: "ModuleNotFoundError: No module named 'geoip2'"
+#### Issue: "ModuleNotFoundError: No module named 'requests'"
 
-**Problem**: Python dependencies not installed.
+**Problem**: Python dependencies not installed. `requests` is the only
+third-party module this project needs — GeoIP comes from the ipinfo.io API, not
+from a local MaxMind/`geoip2` database.
 
 **Solution**:
 ```bash
-sudo apt-get install -y python3-geoip2
+sudo apt-get install -y python3-requests   # or: dnf/zypper/pacman/apk equivalent
+# if your distro has no such package:
 sudo pip3 install requests --break-system-packages
 ```
 
@@ -48,10 +51,10 @@ sudo pip3 install requests --break-system-packages
 **Diagnosis**:
 ```bash
 # 1. Check if .env exists
-sudo test -f config/.env && echo "✓ .env exists" || echo "✗ .env missing"
+sudo test -f /etc/geo-fail2ban.conf && echo "✓ config exists" || echo "✗ config missing"
 
 # 2. Verify credentials
-sudo grep TELEGRAM config/.env
+sudo grep TELEGRAM /etc/geo-fail2ban.conf
 
 # 3. Check if script is executable
 sudo test -x /opt/geo-fail2ban/telegram_alert.py && echo "✓ Executable" || echo "✗ Not executable"
@@ -64,8 +67,9 @@ sudo tail -20 /var/log/fail2ban.log | grep -i telegram
 
 1. **Missing .env file**:
    ```bash
-   sudo cp config/.env.example config/.env
-   sudo nano config/.env
+   sudo cp config/.env.example /etc/geo-fail2ban.conf
+   sudo chmod 600 /etc/geo-fail2ban.conf
+   sudo nano /etc/geo-fail2ban.conf
    # Fill in your API keys
    ```
 
@@ -215,7 +219,7 @@ sudo python3 /opt/geo-fail2ban/abuseipdb_blocker.py
 2. **Invalid API key**:
    ```bash
    # Verify key in .env
-   sudo grep ABUSEIPDB config/.env
+   sudo grep ABUSEIPDB /etc/geo-fail2ban.conf
    
    # Test API directly
    curl -G https://api.abuseipdb.com/api/v2/check \
@@ -300,7 +304,7 @@ sudo netstat -tlnp | grep 22
 curl "https://ipinfo.io/8.8.8.8?token=YOUR_TOKEN"
 
 # 2. Check if token is valid
-sudo grep IPINFO config/.env
+sudo grep IPINFO /etc/geo-fail2ban.conf
 
 # 3. Check script output
 sudo tail -20 /var/log/fail2ban.log
@@ -311,7 +315,7 @@ sudo tail -20 /var/log/fail2ban.log
 1. **Invalid API token**:
    ```bash
    # Verify token at https://ipinfo.io
-   sudo nano config/.env
+   sudo nano /etc/geo-fail2ban.conf
    # Update IPINFO_API_TOKEN
    ```
 
@@ -340,11 +344,8 @@ sudo tail -20 /var/log/fail2ban.log
 
 **Diagnosis**:
 ```bash
-# Check log directory
-sudo ls -la /var/log/fail2ban-geo/
-
-# Check main fail2ban log
-sudo ls -la /var/log/fail2ban.log
+# The four log files this tool uses
+sudo ls -la /var/log/fail2ban.log             /var/log/abuseipdb.log             /var/log/fail2ban-abuseipdb.log             /var/log/ipset-geo.log
 
 # Check permissions
 sudo test -r /var/log/fail2ban.log && echo "✓ Readable"
@@ -352,11 +353,11 @@ sudo test -r /var/log/fail2ban.log && echo "✓ Readable"
 
 **Solutions**:
 
-1. **Create missing directories**:
+1. **Recreate the escalation log** (the `abuseipdb` jail will not start without
+   it, and the cron logs appear on the first daily run):
    ```bash
-   sudo mkdir -p /var/log/fail2ban-geo
-   sudo chown root:root /var/log/fail2ban-geo
-   sudo chmod 755 /var/log/fail2ban-geo
+   sudo touch /var/log/abuseipdb.log
+   sudo systemctl restart fail2ban
    ```
 
 2. **Check fail2ban service**:
@@ -392,10 +393,12 @@ sudo fail2ban-client status
 
 ### Enable Debug Logging
 
+There is no `LOG_LEVEL` key in `/etc/geo-fail2ban.conf`. Debug logging is a
+fail2ban setting:
+
 ```bash
-# Edit .env
-sudo nano config/.env
-LOG_LEVEL="DEBUG"
+# Raise fail2ban's log level (persists in /etc/fail2ban/fail2ban.local)
+sudo fail2ban-client set loglevel DEBUG
 
 # Restart fail2ban
 sudo systemctl restart fail2ban
